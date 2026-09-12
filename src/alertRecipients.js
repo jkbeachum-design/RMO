@@ -1,6 +1,8 @@
 /**
  * Central allowlist/blocklist for outbound alert email & SMS.
- * Used by Express (notifyRMO, digests) and Next.js digest job.
+ * Used by Express (notifyRMO, digests).
+ * Next.js keeps a behavior-identical copy at `frontend/src/lib/alertRecipients.ts`
+ * (Vercel rootDirectory=frontend cannot import this parent file).
  *
  * Safety defaults for pilot testing:
  * - ERICJ379@gmail.com is always blocklisted (any case), even if env unset
