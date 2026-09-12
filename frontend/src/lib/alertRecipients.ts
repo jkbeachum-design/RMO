@@ -35,7 +35,7 @@ export function normalizePhone(phone: string): string {
 
 function emailBlocklist(env: NodeJS.ProcessEnv = process.env): string[] {
   const fromEnv = parseCsvEnv(env.ALERT_EMAIL_BLOCKLIST).map(normalizeEmail);
-  return [...new Set([...DEFAULT_ALERT_EMAIL_BLOCKLIST, ...fromEnv])];
+  return Array.from(new Set(DEFAULT_ALERT_EMAIL_BLOCKLIST.concat(fromEnv)));
 }
 
 function emailAllowlist(env: NodeJS.ProcessEnv = process.env): string[] {
@@ -50,6 +50,13 @@ function phoneAllowlist(env: NodeJS.ProcessEnv = process.env): string[] {
   return parseCsvEnv(env.ALERT_PHONE_ALLOWLIST).map(normalizePhone);
 }
 
+function toList(value: Iterable<string> | string | null | undefined): string[] {
+  if (Array.isArray(value)) return value;
+  if (value == null || value === '') return [];
+  if (typeof value === 'string') return value.split(',');
+  return Array.from(value);
+}
+
 /**
  * Filter outbound email recipients.
  * Blocklist always applies (includes hard-coded Eric). When allowlist is
@@ -59,14 +66,7 @@ export function filterAlertEmails(
   emails: Iterable<string> | string | null | undefined,
   env: NodeJS.ProcessEnv = process.env
 ): string[] {
-  const raw = Array.isArray(emails)
-    ? emails
-    : emails == null || emails === ''
-      ? []
-      : typeof emails === 'string'
-        ? emails.split(',')
-        : [...emails];
-
+  const raw = toList(emails);
   const allow = emailAllowlist(env);
   const block = new Set(emailBlocklist(env));
   const allowSet = allow.length > 0 ? new Set(allow) : null;
@@ -101,14 +101,7 @@ export function filterAlertPhones(
   phones: Iterable<string> | string | null | undefined,
   env: NodeJS.ProcessEnv = process.env
 ): string[] {
-  const raw = Array.isArray(phones)
-    ? phones
-    : phones == null || phones === ''
-      ? []
-      : typeof phones === 'string'
-        ? phones.split(',')
-        : [...phones];
-
+  const raw = toList(phones);
   const allow = phoneAllowlist(env);
   const block = new Set(phoneBlocklist(env));
   const allowSet = allow.length > 0 ? new Set(allow) : null;

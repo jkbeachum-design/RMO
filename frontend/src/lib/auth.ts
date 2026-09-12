@@ -12,7 +12,7 @@ import {
   rolesForUser
 } from './access';
 import { hashPassword, verifyPassword } from './password';
-import { createSessionToken, parseSessionToken } from './session';
+import { parseSessionToken } from './session';
 import { getSupabaseAdmin } from './supabase';
 import type { AppMode, SessionUser, UserRole } from './types';
 
