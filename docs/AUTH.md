@@ -55,15 +55,15 @@ Apply `supabase/migrations/001_auth_company_isolation.sql` in the Supabase SQL e
 
 1. Adds `password_hash`, `auth_user_id`, `is_active` on `users`
 2. Creates `user_licenses` membership table
-3. Backfills memberships from existing `users.license_id` + pilot email → Beachum/Vanguard
+3. Backfills memberships from existing `users.license_id` + pilot RMO email (`jbeachum@buildmyoffice.com`) → Beachum/Vanguard; remaps legacy `jonathan@…` if present. Documents Eric (`ERICJ379@gmail.com`) as ADMIN on Vanguard `#1160775` when that user row exists.
 4. Enables RLS policies for defense-in-depth (service role still bypasses for Retell)
 
 ## Pilot migration path
 
 1. Apply the SQL migration.
 2. Set `SESSION_SECRET`, `RETELL_WEBHOOK_SECRET`, and keep `PILOT_PASSWORD` temporarily.
-3. Sign in once as `jonathan@buildmyoffice.com` with the pilot password — bootstrap writes `password_hash` and dual RMO/OPERATOR memberships for both pilot licenses.
-4. Create additional users in `users` + `user_licenses` (or a future invite flow). Set `password_hash` via a small script using the same `scrypt$…` format as `frontend/src/lib/password.ts`.
+3. Sign in once as `jbeachum@buildmyoffice.com` (Jonathan Beachum) with the pilot password — bootstrap writes `password_hash` and dual RMO/OPERATOR memberships for both pilot licenses (Beachum `#836089` + Vanguard `#1160775`).
+4. Create additional users in `users` + `user_licenses` (or a future invite flow). Set `password_hash` via a small script using the same `scrypt$…` format as `frontend/src/lib/password.ts`. For Vanguard, seed Eric (`ERICJ379@gmail.com`) as `ADMIN` on `#1160775` (company principal); Jonathan remains `RMO` on both licenses.
 5. Optional later: set `users.auth_user_id` and switch login to Supabase Auth; RLS helpers already key off `auth.uid()` / JWT email.
 
 ## Retell configuration

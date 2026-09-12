@@ -6,7 +6,9 @@ VALUES ('compliance-documents', 'compliance-documents', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Public read for pilot; tighten before production if needed.
-CREATE POLICY IF NOT EXISTS rmo_compliance_docs_public_read
+-- Postgres/Supabase do not support CREATE POLICY IF NOT EXISTS — use DROP + CREATE.
+DROP POLICY IF EXISTS rmo_compliance_docs_public_read ON storage.objects;
+CREATE POLICY rmo_compliance_docs_public_read
   ON storage.objects FOR SELECT
   TO public
   USING (bucket_id = 'compliance-documents');

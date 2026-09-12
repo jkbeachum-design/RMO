@@ -39,20 +39,44 @@ COMMENT ON TABLE public.user_licenses IS
 -- ---------------------------------------------------------------------------
 -- 3. Pilot membership backfill (Beachum 836089 + Vanguard 1160775)
 --    Links existing users by email/license_id when present.
+--
+-- Pilot roster (seed/backfill targets; create users rows separately if missing):
+--   Jonathan Beachum <jbeachum@buildmyoffice.com>
+--     — sole prop / RMO on Beachum Construction (836089)
+--     — RMO on Vanguard Property Maintenance (1160775)
+--   Eric <ERICJ379@gmail.com>
+--     — company principal / ADMIN on Vanguard (1160775)
 -- ---------------------------------------------------------------------------
+
+-- Correct legacy pilot email if an older seed used jonathan@buildmyoffice.com
+UPDATE public.users
+SET user_email = 'jbeachum@buildmyoffice.com',
+    user_name = COALESCE(NULLIF(trim(user_name), ''), 'Jonathan Beachum'),
+    updated_at = now()
+WHERE lower(user_email) = 'jonathan@buildmyoffice.com';
+
 INSERT INTO public.user_licenses (user_id, license_id, role)
 SELECT u.id, u.license_id, COALESCE(NULLIF(upper(u.role), ''), 'OPERATOR')
 FROM public.users u
 WHERE u.license_id IS NOT NULL
 ON CONFLICT (user_id, license_id, role) DO NOTHING;
 
--- Ensure known pilot RMO email has both pilot licenses if the licenses exist
+-- Jonathan Beachum: RMO on both pilot licenses when the user + licenses exist
 INSERT INTO public.user_licenses (user_id, license_id, role)
 SELECT u.id, l.id, 'RMO'
 FROM public.users u
 CROSS JOIN public.licenses l
-WHERE lower(u.user_email) = 'jonathan@buildmyoffice.com'
+WHERE lower(u.user_email) = 'jbeachum@buildmyoffice.com'
   AND l.license_number IN ('836089', '1160775')
+ON CONFLICT (user_id, license_id, role) DO NOTHING;
+
+-- Eric: ADMIN on Vanguard when the user + license exist
+INSERT INTO public.user_licenses (user_id, license_id, role)
+SELECT u.id, l.id, 'ADMIN'
+FROM public.users u
+CROSS JOIN public.licenses l
+WHERE lower(u.user_email) = 'ericj379@gmail.com'
+  AND l.license_number = '1160775'
 ON CONFLICT (user_id, license_id, role) DO NOTHING;
 
 -- ---------------------------------------------------------------------------

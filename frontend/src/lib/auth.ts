@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import {
+  LEGACY_PILOT_EMAIL,
   PILOT_EMAIL,
   PILOT_NAME,
   SESSION_COOKIE
@@ -16,6 +17,7 @@ import { getSupabaseAdmin } from './supabase';
 import type { AppMode, SessionUser, UserRole } from './types';
 
 export {
+  LEGACY_PILOT_EMAIL,
   PILOT_EMAIL,
   PILOT_NAME,
   COMPLIANCE_PHONE,
@@ -83,6 +85,18 @@ async function findUserByEmail(email: string): Promise<DbUser | null> {
 export async function ensurePilotBootstrap(): Promise<DbUser | null> {
   const supabase = getSupabaseAdmin();
   let user = await findUserByEmail(PILOT_EMAIL);
+
+  // Remap legacy jonathan@ seed → jbeachum@ if the corrected email row is missing
+  if (!user) {
+    const legacy = await findUserByEmail(LEGACY_PILOT_EMAIL);
+    if (legacy) {
+      await supabase
+        .from('users')
+        .update({ user_email: PILOT_EMAIL, user_name: PILOT_NAME })
+        .eq('id', legacy.id);
+      user = { ...legacy, user_email: PILOT_EMAIL, user_name: PILOT_NAME };
+    }
+  }
 
   if (!user) {
     const { data: licenses } = await supabase
