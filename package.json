@@ -1,0 +1,33 @@
+{
+  "name": "vanguard-backend",
+  "version": "1.0.0",
+  "description": "Vanguard RMO Copilot — Retell webhook + Claude extraction + compliance rule engine",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "build": "echo 'no build needed'"
+  },
+  "keywords": [
+    "rmo",
+    "compliance",
+    "retell",
+    "construction"
+  ],
+  "author": "Jon Kim Beachum",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "@supabase/supabase-js": "^2.116.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
