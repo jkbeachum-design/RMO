@@ -18,6 +18,7 @@ Compliance automation for California RMOs: Retell voice check-ins → Claude ext
 | `docs/EXPORT.md` | Audit defense PDF + ZIP export |
 | `docs/RULES.md` | Configurable rules + digests |
 | `docs/ROLES.md` | Roles matrix + company onboarding |
+| `docs/PROJECT_STATUS.md` | Full feature inventory + current status |
 | `vercel.json` | Backend Vercel config |
 
 ## Backend
