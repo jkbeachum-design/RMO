@@ -7,7 +7,6 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { format } from 'date-fns';
 import AppShell from '@/components/AppShell';
-import { DEFAULT_LICENSE } from '@/lib/constants';
 import type { ComplianceLog, License } from '@/lib/types';
 
 type ReportPayload = {
@@ -21,10 +20,11 @@ type ReportPayload = {
 
 function AuditReportInner({ userName }: { userName: string }) {
   const searchParams = useSearchParams();
-  const licenseNumber = searchParams.get('license') || DEFAULT_LICENSE;
+  const licenseFromQuery = searchParams.get('license');
   const signatureRef = useRef<SignatureCanvas | null>(null);
   const reportRef = useRef<HTMLDivElement | null>(null);
 
+  const [licenseNumber, setLicenseNumber] = useState(licenseFromQuery || '');
   const [license, setLicense] = useState<License | null>(null);
   const [report, setReport] = useState<ReportPayload | null>(null);
   const [notes, setNotes] = useState('');
@@ -33,14 +33,26 @@ function AuditReportInner({ userName }: { userName: string }) {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/audit?license_number=${licenseNumber}`)
+    const qs = licenseFromQuery
+      ? `?license_number=${encodeURIComponent(licenseFromQuery)}`
+      : '';
+    fetch(`/api/audit${qs}`)
       .then((r) => r.json())
       .then((data) => {
+        if (data.error) {
+          setMessage(data.error);
+          setLicense(null);
+          setReport(null);
+          return;
+        }
         setLicense(data.license || null);
         setReport(data.report || null);
+        if (data.license?.license_number) {
+          setLicenseNumber(data.license.license_number);
+        }
       })
       .finally(() => setLoading(false));
-  }, [licenseNumber]);
+  }, [licenseFromQuery]);
 
   async function signAndSubmit() {
     if (!signatureRef.current || signatureRef.current.isEmpty()) {

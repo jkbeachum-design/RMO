@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import type { UserRole } from '@/lib/types';
+import type { AppMode } from '@/lib/types';
 
 const RMO_LINKS = [
   { href: '/dashboard', label: 'Overview' },
@@ -20,12 +21,26 @@ export default function Navbar({
   mode,
   name
 }: {
-  mode: UserRole;
+  mode: AppMode;
   name: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const links = mode === 'RMO' ? RMO_LINKS : OPERATOR_LINKS;
+  const [canSwitch, setCanSwitch] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.memberships) return;
+        const roles = new Set((data.memberships as Array<{ role: string }>).map((m) => m.role));
+        const hasRmo = roles.has('RMO') || roles.has('ADMIN');
+        const hasOp = roles.has('OPERATOR') || roles.has('FOREMAN') || roles.has('PM');
+        setCanSwitch(hasRmo && hasOp);
+      })
+      .catch(() => setCanSwitch(false));
+  }, []);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -35,11 +50,12 @@ export default function Navbar({
 
   async function switchMode() {
     const next = mode === 'RMO' ? 'OPERATOR' : 'RMO';
-    await fetch('/api/auth/switch-mode', {
+    const res = await fetch('/api/auth/switch-mode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: next })
     });
+    if (!res.ok) return;
     router.push(next === 'RMO' ? '/dashboard' : '/operator');
     router.refresh();
   }
@@ -73,13 +89,15 @@ export default function Navbar({
           <span className="rounded bg-white/10 px-2 py-0.5 text-xs uppercase tracking-wide">
             {mode === 'RMO' ? 'RMO' : 'Operator'}
           </span>
-          <button
-            type="button"
-            onClick={switchMode}
-            className="rounded border border-white/25 px-2.5 py-1 text-xs text-teal-50 hover:bg-white/10"
-          >
-            Switch to {mode === 'RMO' ? 'Operator' : 'RMO'}
-          </button>
+          {canSwitch ? (
+            <button
+              type="button"
+              onClick={switchMode}
+              className="rounded border border-white/25 px-2.5 py-1 text-xs text-teal-50 hover:bg-white/10"
+            >
+              Switch to {mode === 'RMO' ? 'Operator' : 'RMO'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={logout}

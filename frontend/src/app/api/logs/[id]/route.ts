@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, refreshSessionMemberships } from '@/lib/auth';
+import { assertLogAccess } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function GET(
@@ -9,6 +10,12 @@ export async function GET(
   const session = getSession();
   if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const live = await refreshSessionMemberships(session);
+  const allowed = await assertLogAccess(live, params.id);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Log not found or access denied' }, { status: 404 });
   }
 
   const supabase = getSupabaseAdmin();
@@ -34,6 +41,12 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const live = await refreshSessionMemberships(session);
+  const allowed = await assertLogAccess(live, params.id);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Log not found or access denied' }, { status: 404 });
+  }
+
   const body = await req.json().catch(() => ({}));
   const updates: Record<string, unknown> = {
     updated_at: new Date().toISOString()
@@ -50,6 +63,7 @@ export async function PATCH(
     .from('compliance_logs')
     .update(updates)
     .eq('id', params.id)
+    .eq('license_id', allowed.license_id)
     .select()
     .single();
 

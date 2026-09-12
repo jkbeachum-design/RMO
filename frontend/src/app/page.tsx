@@ -2,14 +2,13 @@
 
 import { FormEvent, Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { PILOT_EMAIL } from '@/lib/constants';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialMode = searchParams.get('mode') === 'operator' ? 'OPERATOR' : 'RMO';
 
-  const [email, setEmail] = useState(PILOT_EMAIL);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'RMO' | 'OPERATOR'>(initialMode);
   const [error, setError] = useState('');
@@ -34,7 +33,7 @@ function LoginForm() {
       return;
     }
 
-    router.push(mode === 'RMO' ? '/dashboard' : '/operator');
+    router.push(data.user?.mode === 'OPERATOR' || mode === 'OPERATOR' ? '/operator' : '/dashboard');
     router.refresh();
   }
 
@@ -91,6 +90,7 @@ function LoginForm() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
               className="w-full rounded border border-white/20 bg-black/20 px-3 py-2 text-white outline-none focus:border-teal-300"
               required
             />
@@ -102,8 +102,8 @@ function LoginForm() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               className="w-full rounded border border-white/20 bg-black/20 px-3 py-2 text-white outline-none focus:border-teal-300"
-              placeholder="Pilot password"
               required
             />
           </label>
@@ -120,8 +120,7 @@ function LoginForm() {
         </form>
 
         <p className="mt-6 text-xs text-teal-100/60">
-          Pilot login: {PILOT_EMAIL}. Default password is in your <code>.env.local</code> as{' '}
-          <code>PILOT_PASSWORD</code> (default <code>rmo-pilot</code>).
+          Accounts are company-scoped. Contact your RMO admin if you need access to another license.
         </p>
       </div>
     </div>
