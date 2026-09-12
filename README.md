@@ -37,6 +37,8 @@ npm run dev            # http://localhost:3000
 
 **Auth:** HMAC-signed session cookies + `user_licenses` company isolation. See [docs/AUTH.md](docs/AUTH.md).
 
+**Operator intake:** Voice dial-in or structured PWA form (`/operator/submit-report`) with multi-project fields, per-sub COI uploads, and membership-scoped history edits.
+
 **Operator dial-in:** +1 (916) 848-5224
 
 ## Environment

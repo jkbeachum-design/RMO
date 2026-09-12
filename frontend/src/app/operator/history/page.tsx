@@ -1,8 +1,6 @@
 import { redirect } from 'next/navigation';
-import { format } from 'date-fns';
-import Link from 'next/link';
 import AppShell from '@/components/AppShell';
-import { RiskFlagList } from '@/components/RiskFlagBadge';
+import OperatorHistoryClient from '@/components/OperatorHistoryClient';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
@@ -22,11 +20,9 @@ export default async function OperatorHistoryPage({
 
   let logs: ComplianceLog[] = [];
   let entityName = 'your companies';
-  let licenseNumber: string | null = null;
 
   if (resolved) {
     entityName = resolved.license.entity_name;
-    licenseNumber = resolved.license.license_number;
     const supabase = getSupabaseAdmin();
     const { data } = await supabase
       .from('compliance_logs')
@@ -39,38 +35,7 @@ export default async function OperatorHistoryPage({
 
   return (
     <AppShell mode="OPERATOR" name={session.name}>
-      <div className="mx-auto max-w-2xl">
-        <h1 className="font-serif text-4xl">Your reports</h1>
-        <p className="mt-2 text-slate-600">
-          Recent check-ins for {entityName}
-          {licenseNumber ? ` (#${licenseNumber})` : ''}.
-        </p>
-
-        <div className="mt-8 space-y-3">
-          {logs.map((log) => (
-            <div key={log.id} className="border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm text-slate-500">
-                    {format(new Date(log.call_timestamp || log.created_at), 'PPp')}
-                  </p>
-                  <p className="font-medium">
-                    {log.extracted_data?.projects?.[0]?.address || 'Report'}
-                  </p>
-                </div>
-                <RiskFlagList riskFlags={log.risk_flags} />
-              </div>
-            </div>
-          ))}
-          {!logs.length ? (
-            <p className="text-slate-500">No reports yet. Call the compliance line to file one.</p>
-          ) : null}
-        </div>
-
-        <Link href="/operator" className="mt-6 inline-block text-sm text-teal-800 hover:underline">
-          ← Back to check-in
-        </Link>
-      </div>
+      <OperatorHistoryClient initialLogs={logs} entityName={entityName} />
     </AppShell>
   );
 }

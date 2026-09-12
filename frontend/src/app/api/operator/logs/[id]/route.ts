@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
-import { resolveAccessibleLicense } from '@/lib/access';
+import { assertLogAccess } from '@/lib/access';
 
 function backendHeaders(): Record<string, string> {
   const secret = process.env.RETELL_WEBHOOK_SECRET || process.env.RETELL_API_KEY || '';
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (secret) {
     headers.Authorization = `Bearer ${secret}`;
     headers['x-retell-signature'] = secret;
@@ -12,29 +12,20 @@ function backendHeaders(): Record<string, string> {
   return headers;
 }
 
-/**
- * Authenticated multipart proxy → Express POST /api/submit-report
- * Enforces operator session + license membership before forwarding.
- */
-export async function POST(req: Request) {
+/** Operator correction proxy — membership-checked, then trusted backend PATCH. */
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   const session = getSession();
   if (!session || session.mode !== 'OPERATOR') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const live = await refreshSessionMemberships(session);
-  const formData = await req.formData();
-  const licenseId = String(formData.get('licenseId') || '').trim();
-
-  const resolved = await resolveAccessibleLicense(live, licenseId);
-  if (!resolved) {
-    return NextResponse.json({ error: 'License not found or access denied' }, { status: 403 });
-  }
-
-  // Force canonical license number from membership
-  formData.set('licenseId', resolved.license.license_number);
-  if (!formData.get('operatorName')) {
-    formData.set('operatorName', live.name);
+  const allowed = await assertLogAccess(live, params.id);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Log not found or access denied' }, { status: 404 });
   }
 
   const backend = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -42,23 +33,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'BACKEND_URL not configured' }, { status: 503 });
   }
 
-  const res = await fetch(`${backend.replace(/\/$/, '')}/api/submit-report`, {
-    method: 'POST',
-    headers: backendHeaders(),
-    body: formData
-  });
+  const body = await req.json().catch(() => ({}));
+  const res = await fetch(
+    `${backend.replace(/\/$/, '')}/api/compliance-logs/${params.id}`,
+    {
+      method: 'PATCH',
+      headers: backendHeaders(),
+      body: JSON.stringify(body)
+    }
+  );
 
   const text = await res.text();
   let parsed: unknown = text;
   try {
     parsed = JSON.parse(text);
   } catch {
-    /* keep text */
+    /* keep */
   }
 
   if (!res.ok) {
     return NextResponse.json(
-      { error: 'Backend rejected report', details: parsed },
+      { error: 'Backend rejected update', details: parsed },
       { status: res.status }
     );
   }

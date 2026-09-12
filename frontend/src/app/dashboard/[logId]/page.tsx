@@ -125,10 +125,93 @@ export default async function LogDetailPage({
                   Subcontractors
                 </h3>
                 <ul className="space-y-2 text-sm">
-                  {extracted.subcontractors.map((s, i) => (
-                    <li key={i}>
-                      {s.company_name} · {s.trade || 'trade n/a'} ·{' '}
-                      {s.cslb_license_number || 'no CSLB #'}
+                  {extracted.subcontractors.map((s, i) => {
+                    const today = new Date().toISOString().split('T')[0];
+                    const coiOk = Boolean(
+                      s.coi_document_url &&
+                        s.coi_expiration_date &&
+                        s.coi_expiration_date >= today
+                    );
+                    return (
+                      <li key={i} className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{ background: coiOk ? '#059669' : '#b91c1c' }}
+                          title={coiOk ? 'COI current' : 'COI missing or expired'}
+                          aria-label={coiOk ? 'COI current' : 'COI missing or expired'}
+                        />
+                        <span>
+                          {s.company_name} · {s.trade || 'trade n/a'} ·{' '}
+                          {s.cslb_license_number || 'no CSLB #'}
+                          {s.coi_expiration_date ? ` · COI ${s.coi_expiration_date}` : ''}
+                        </span>
+                        {s.coi_document_url ? (
+                          <a
+                            href={s.coi_document_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-teal-800 hover:underline"
+                          >
+                            view COI
+                          </a>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+
+            {extracted.file_urls &&
+            (extracted.file_urls.cois?.length ||
+              extracted.file_urls.permits?.length ||
+              extracted.file_urls.photos?.length) ? (
+              <div className="mt-5">
+                <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                  Uploaded documents
+                </h3>
+                <ul className="space-y-1 text-sm">
+                  {(extracted.file_urls.cois || []).map((item, i) => {
+                    const url = typeof item === 'string' ? item : item.url;
+                    const label =
+                      typeof item === 'string'
+                        ? `COI ${i + 1}`
+                        : `COI${item.company_name ? ` · ${item.company_name}` : ` ${i + 1}`}`;
+                    return (
+                      <li key={`coi-${i}`}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-teal-800 hover:underline"
+                        >
+                          {label}
+                        </a>
+                      </li>
+                    );
+                  })}
+                  {(extracted.file_urls.permits || []).map((url, i) => (
+                    <li key={`permit-${i}`}>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-teal-800 hover:underline"
+                      >
+                        Permit {i + 1}
+                      </a>
+                    </li>
+                  ))}
+                  {(extracted.file_urls.photos || []).map((url, i) => (
+                    <li key={`photo-${i}`}>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-teal-800 hover:underline"
+                      >
+                        Photo {i + 1}
+                      </a>
                     </li>
                   ))}
                 </ul>
@@ -137,7 +220,9 @@ export default async function LogDetailPage({
           </div>
 
           <div className="border border-slate-200 bg-white p-5">
-            <h2 className="mb-3 text-lg font-semibold">Raw transcript</h2>
+            <h2 className="mb-3 text-lg font-semibold">
+              {log.source_type === 'PWA_FORM' ? 'Operator notes' : 'Raw transcript'}
+            </h2>
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs text-slate-700">
               {log.raw_payload || 'No transcript stored.'}
             </pre>
