@@ -27,9 +27,14 @@ When the rule engine raises `critical_flags`, Express `notifyRMO`:
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | SMS |
 | `DASHBOARD_URL` | Link included in email body |
 
+## Digests (priority #9)
+
+Morning digest + low-involvement alerts are configured under **Rules & digests** (`/dashboard/settings`). See [RULES.md](./RULES.md).
+
 ## Verify
 
 1. Create/unreview a log → appears in Inbox
 2. Mark reviewed on log detail → leaves Inbox
 3. Trigger critical flag without provider keys → see `ALERT:` in server logs
 4. With Resend/Twilio configured → message delivered to RMO contacts
+5. Run digest from Settings or `POST /api/jobs/digests` → console/email summary + optional low-involvement alert

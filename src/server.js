@@ -197,7 +197,8 @@ app.post('/api/webhooks/retell', async (req, res) => {
     }
 
     // Step 4: Run rule engine
-    const riskFlags = evaluateComplianceRules(extractedData, license, operator);
+    const ruleSettings = await loadRuleSettings(license.id);
+    const riskFlags = evaluateComplianceRules(extractedData, license, ruleSettings);
 
     // Step 5: Store compliance log in Supabase
     const callTimestamp = payload.end_timestamp
@@ -362,19 +363,74 @@ Return only the JSON object.
   }
 }
 
+
+function defaultRuleSettings() {
+  return {
+    contract_value_threshold: 10000,
+    permit_required_above: 10000,
+    min_trades_for_b_general: 3,
+    flag_unverified_subs: true,
+    flag_expired_coi: true,
+    flag_workers_comp_exempt_crew: true,
+    flag_scope_mismatch: true,
+    flag_missing_permit: true,
+    low_involvement_days: 14,
+    digest_enabled: true,
+    digest_hour_pt: 7,
+    alert_email: null,
+    alert_phone: null
+  };
+}
+
+async function loadRuleSettings(licenseId) {
+  const defaults = defaultRuleSettings();
+  if (!licenseId) return defaults;
+  try {
+    const { data } = await supabase
+      .from('compliance_settings')
+      .select('*')
+      .eq('license_id', licenseId)
+      .maybeSingle();
+    if (!data) return defaults;
+    return {
+      contract_value_threshold: Number(data.contract_value_threshold ?? defaults.contract_value_threshold),
+      permit_required_above: Number(data.permit_required_above ?? defaults.permit_required_above),
+      min_trades_for_b_general: Number(data.min_trades_for_b_general ?? defaults.min_trades_for_b_general),
+      flag_unverified_subs: data.flag_unverified_subs !== false,
+      flag_expired_coi: data.flag_expired_coi !== false,
+      flag_workers_comp_exempt_crew: data.flag_workers_comp_exempt_crew !== false,
+      flag_scope_mismatch: data.flag_scope_mismatch !== false,
+      flag_missing_permit: data.flag_missing_permit !== false,
+      low_involvement_days: Number(data.low_involvement_days ?? defaults.low_involvement_days),
+      digest_enabled: data.digest_enabled !== false,
+      digest_hour_pt: Number(data.digest_hour_pt ?? defaults.digest_hour_pt),
+      alert_email: data.alert_email || null,
+      alert_phone: data.alert_phone || null
+    };
+  } catch (err) {
+    console.warn('loadRuleSettings failed; using defaults', err?.message || err);
+    return defaults;
+  }
+}
+
 // ============================================================================
 // RULE ENGINE: Evaluate Compliance Flags
 // ============================================================================
 
-function evaluateComplianceRules(extractedData, license) {
+function evaluateComplianceRules(extractedData, license, settings = defaultRuleSettings()) {
   const flags = {
     critical_flags: [],
     warning_flags: [],
     raw_flags: []
   };
 
+  const contractThreshold = Number(settings.contract_value_threshold ?? 10000);
+  const permitThreshold = Number(settings.permit_required_above ?? 10000);
+  const minTrades = Number(settings.min_trades_for_b_general ?? 3);
+
   // FLAG 1: Workers' Comp Violation
   if (
+    settings.flag_workers_comp_exempt_crew !== false &&
     extractedData.crew_status?.has_direct_employees === true &&
     license.workers_comp_status === 'EXEMPT'
   ) {
@@ -387,14 +443,14 @@ function evaluateComplianceRules(extractedData, license) {
     });
   }
 
-  // FLAG 2: Contract Threshold Exceeded ($10k+)
+  // FLAG 2: Contract Threshold Exceeded
   if (Array.isArray(extractedData.projects)) {
     for (const project of extractedData.projects) {
-      if (project.contract_value && Number(project.contract_value) > 10000) {
+      if (project.contract_value && Number(project.contract_value) > contractThreshold) {
         flags.warning_flags.push('THRESHOLD_EXCEEDED');
         flags.raw_flags.push({
           flag: 'THRESHOLD_EXCEEDED',
-          reason: `Contract value $${project.contract_value} exceeds $10,000 threshold`,
+          reason: `Contract value $${project.contract_value} exceeds $${contractThreshold} threshold`,
           severity: 'HIGH',
           address: project.address
         });
@@ -403,7 +459,7 @@ function evaluateComplianceRules(extractedData, license) {
   }
 
   // FLAG 3: Unverified Subcontractors
-  if (Array.isArray(extractedData.subcontractors)) {
+  if (settings.flag_unverified_subs !== false && Array.isArray(extractedData.subcontractors)) {
     for (const sub of extractedData.subcontractors) {
       if (!sub.cslb_verified) {
         flags.warning_flags.push('UNVERIFIED_SUBCONTRACTOR');
@@ -418,7 +474,7 @@ function evaluateComplianceRules(extractedData, license) {
   }
 
   // FLAG 4: Expired COI
-  if (Array.isArray(extractedData.subcontractors)) {
+  if (settings.flag_expired_coi !== false && Array.isArray(extractedData.subcontractors)) {
     const today = new Date().toISOString().split('T')[0];
     for (const sub of extractedData.subcontractors) {
       if (sub.coi_expiration_date && sub.coi_expiration_date < today) {
@@ -433,8 +489,12 @@ function evaluateComplianceRules(extractedData, license) {
     }
   }
 
-  // FLAG 5: Scope Mismatch (B-General requires framing or 3+ unrelated trades)
-  if (license.classification === 'B - GENERAL BUILDING' && Array.isArray(extractedData.projects)) {
+  // FLAG 5: Scope Mismatch (B-General requires framing or N+ unrelated trades)
+  if (
+    settings.flag_scope_mismatch !== false &&
+    license.classification === 'B - GENERAL BUILDING' &&
+    Array.isArray(extractedData.projects)
+  ) {
     for (const project of extractedData.projects) {
       const trades = project.trades || [];
       const hasFraming = trades.some(
@@ -444,11 +504,11 @@ function evaluateComplianceRules(extractedData, license) {
       );
       const uniqueTrades = new Set(trades).size;
 
-      if (trades.length > 0 && !hasFraming && uniqueTrades < 3) {
+      if (trades.length > 0 && !hasFraming && uniqueTrades < minTrades) {
         flags.warning_flags.push('SCOPE_MISMATCH');
         flags.raw_flags.push({
           flag: 'SCOPE_MISMATCH',
-          reason: `B-General requires framing OR 3+ unrelated trades. Found: ${trades.join(', ')}`,
+          reason: `B-General requires framing OR ${minTrades}+ unrelated trades. Found: ${trades.join(', ')}`,
           severity: 'MEDIUM',
           address: project.address,
           trades
@@ -457,11 +517,11 @@ function evaluateComplianceRules(extractedData, license) {
     }
   }
 
-  // FLAG 6: Missing permit on $10k+ jobs
-  if (Array.isArray(extractedData.projects)) {
+  // FLAG 6: Missing permit above threshold
+  if (settings.flag_missing_permit !== false && Array.isArray(extractedData.projects)) {
     const permits = Array.isArray(extractedData.permits) ? extractedData.permits : [];
     for (const project of extractedData.projects) {
-      if (project.contract_value && Number(project.contract_value) > 10000) {
+      if (project.contract_value && Number(project.contract_value) > permitThreshold) {
         const hasPermit = permits.some(
           (p) =>
             p.permit_number &&
@@ -477,7 +537,7 @@ function evaluateComplianceRules(extractedData, license) {
           flags.warning_flags.push('MISSING_PERMIT');
           flags.raw_flags.push({
             flag: 'MISSING_PERMIT',
-            reason: `Contract value $${project.contract_value} exceeds $10,000 but no permit number was reported`,
+            reason: `Contract value $${project.contract_value} exceeds $${permitThreshold} but no permit number was reported`,
             severity: 'MEDIUM',
             address: project.address
           });
@@ -950,7 +1010,8 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
       }
     };
 
-    const riskFlags = evaluateComplianceRules(extractedData, license);
+    const ruleSettings = await loadRuleSettings(license.id);
+    const riskFlags = evaluateComplianceRules(extractedData, license, ruleSettings);
     extractedData.audit_summary.risk_count = riskFlags.raw_flags?.length || 0;
 
     const complianceLog = {
@@ -1086,7 +1147,8 @@ app.patch('/api/compliance-logs/:id', async (req, res) => {
       }));
     }
 
-    const riskFlags = evaluateComplianceRules(nextExtracted, license);
+    const ruleSettings = await loadRuleSettings(license.id);
+    const riskFlags = evaluateComplianceRules(nextExtracted, license, ruleSettings);
     if (!nextExtracted.audit_summary) nextExtracted.audit_summary = {};
     nextExtracted.audit_summary.risk_count = riskFlags.raw_flags?.length || 0;
     nextExtracted.audit_summary.edited_at = new Date().toISOString();
@@ -1165,5 +1227,150 @@ if (!isVercel) {
     console.log(`Vanguard backend listening on port ${PORT}`);
   });
 }
+
+
+// ============================================================================
+// DIGEST: Morning summary + low-involvement alerts
+// ============================================================================
+app.post('/api/jobs/digests', async (req, res) => {
+  try {
+    const secret = process.env.CRON_SECRET || process.env.DIGEST_SECRET;
+    if (secret && req.headers['x-cron-secret'] !== secret && req.query.secret !== secret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const now = new Date();
+    const { data: licenses, error } = await supabase.from('licenses').select('*');
+    if (error) throw error;
+
+    const results = [];
+    for (const license of licenses || []) {
+      const settings = await loadRuleSettings(license.id);
+      const contacts = await resolveRmoContacts(license);
+      const alertEmail = settings.alert_email || contacts.emails[0] || null;
+      const alertPhone = settings.alert_phone || contacts.phones[0] || null;
+      if (!alertEmail && !alertPhone) continue;
+
+      const sinceIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const [{ data: logs }, { data: activities }] = await Promise.all([
+        supabase
+          .from('compliance_logs')
+          .select('id, flagged, created_at, risk_flags, rmo_reviewed')
+          .eq('license_id', license.id)
+          .gte('created_at', sinceIso),
+        supabase
+          .from('supervision_activities')
+          .select('id, activity_type, occurred_at')
+          .eq('license_id', license.id)
+          .gte('occurred_at', sinceIso)
+      ]);
+
+      const openFlags = (logs || []).filter((l) => l.flagged && !l.rmo_reviewed).length;
+      const visits = (activities || []).filter((a) =>
+        String(a.activity_type || '').toUpperCase().includes('VISIT')
+      ).length;
+      const decisions = (activities || []).filter((a) =>
+        String(a.activity_type || '').toUpperCase().includes('DECISION')
+      ).length;
+      const reviews = (logs || []).filter((l) => l.rmo_reviewed).length;
+      const lastActivity = (activities || [])
+        .map((a) => a.occurred_at)
+        .filter(Boolean)
+        .sort()
+        .reverse()[0] || null;
+      const lastLog = (logs || [])
+        .map((l) => l.created_at)
+        .filter(Boolean)
+        .sort()
+        .reverse()[0] || null;
+      const lastTouch = [lastActivity, lastLog].filter(Boolean).sort().reverse()[0] || null;
+      const daysSince = lastTouch
+        ? Math.floor((now.getTime() - new Date(lastTouch).getTime()) / 86400000)
+        : 999;
+      const lowInvolvement = daysSince >= Number(settings.low_involvement_days || 14);
+
+      const lines = [
+        `License ${license.license_number} — ${license.entity_name || 'company'}`,
+        `Open flagged logs (30d): ${openFlags}`,
+        `Site visits (30d): ${visits}`,
+        `Decisions (30d): ${decisions}`,
+        `Reviews (30d): ${reviews}`,
+        `Last involvement: ${lastTouch || 'none on record'} (${daysSince} days)`,
+        lowInvolvement
+          ? `LOW INVOLVEMENT: no visits/decisions/reviews for ${settings.low_involvement_days} days`
+          : 'Involvement within threshold'
+      ];
+      const body = lines.join('\n');
+
+      let deliveredEmail = false;
+      let deliveredSms = false;
+
+      if (settings.digest_enabled !== false) {
+        if (alertEmail) {
+          const emailResult = await sendEmailAlert({
+            to: [alertEmail],
+            subject: `[RMO Digest] ${license.license_number}`,
+            text: body
+          });
+          deliveredEmail = Boolean(emailResult?.ok);
+          if (emailResult?.skipped) console.log('DIGEST email skipped:', emailResult.reason, body);
+        }
+        if (alertPhone) {
+          const smsResult = await sendSmsAlert({ to: [alertPhone], body: body.slice(0, 300) });
+          deliveredSms = Boolean(smsResult?.ok);
+          if (smsResult?.skipped) console.log('DIGEST SMS skipped:', smsResult.reason);
+        }
+        await supabase.from('digest_runs').insert([
+          {
+            license_id: license.id,
+            kind: 'MORNING',
+            payload: { openFlags, visits, decisions, reviews, daysSince, lowInvolvement },
+            delivered_email: deliveredEmail,
+            delivered_sms: deliveredSms
+          }
+        ]);
+      }
+
+      if (settings.digest_enabled !== false && lowInvolvement) {
+        const alertBody = `LOW INVOLVEMENT alert for ${license.license_number}: ${daysSince} days since last visit/decision/review (threshold ${settings.low_involvement_days}).`;
+        if (alertEmail) {
+          await sendEmailAlert({
+            to: [alertEmail],
+            subject: `[RMO] Low involvement — ${license.license_number}`,
+            text: alertBody
+          });
+        }
+        if (alertPhone) {
+          await sendSmsAlert({ to: [alertPhone], body: alertBody });
+        }
+        await supabase.from('digest_runs').insert([
+          {
+            license_id: license.id,
+            kind: 'LOW_INVOLVEMENT',
+            payload: { daysSince, threshold: settings.low_involvement_days },
+            delivered_email: Boolean(alertEmail),
+            delivered_sms: Boolean(alertPhone)
+          }
+        ]);
+      }
+
+      results.push({
+        license_id: license.id,
+        license_number: license.license_number,
+        openFlags,
+        visits,
+        decisions,
+        daysSince,
+        lowInvolvement
+      });
+    }
+
+    return res.json({ ok: true, processed: results.length, results });
+  } catch (err) {
+    console.error('digest job failed', err);
+    return res.status(500).json({ error: err.message || 'Digest failed' });
+  }
+});
+
 
 module.exports = app;
