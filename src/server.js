@@ -22,6 +22,11 @@ const Anthropic = require('@anthropic-ai/sdk');
 const cors = require('cors');
 const crypto = require('crypto');
 const multer = require('multer');
+const {
+  filterAlertEmails,
+  filterAlertPhones,
+  filterAlertRecipients
+} = require('./alertRecipients');
 
 const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_KEY', 'ANTHROPIC_API_KEY'];
 
@@ -722,16 +727,22 @@ async function resolveRmoContacts(license) {
     console.warn('Could not resolve RMO membership contacts:', err.message || err);
   }
 
-  return {
+  // Permanent guard: allowlist/blocklist before any notify or digest picks a recipient
+  return filterAlertRecipients({
     emails: [...contacts.emails],
     phones: [...contacts.phones]
-  };
+  });
 }
 
 async function sendEmailAlert({ to, subject, text }) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.ALERT_FROM_EMAIL || 'RMO Compliance <onboarding@resend.dev>';
-  if (!apiKey || !to?.length) return { skipped: true, reason: 'email_not_configured' };
+  // Last-line filter so every Resend path honors allowlist/blocklist
+  const recipients = filterAlertEmails(to);
+  if (!recipients.length) {
+    return { skipped: true, reason: 'no_allowed_recipients' };
+  }
+  if (!apiKey) return { skipped: true, reason: 'email_not_configured' };
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -741,7 +752,7 @@ async function sendEmailAlert({ to, subject, text }) {
     },
     body: JSON.stringify({
       from,
-      to,
+      to: recipients,
       subject,
       text
     })
@@ -752,19 +763,24 @@ async function sendEmailAlert({ to, subject, text }) {
     console.error('Resend email failed:', res.status, body);
     return { ok: false, status: res.status, body };
   }
-  return { ok: true };
+  return { ok: true, to: recipients };
 }
 
 async function sendSmsAlert({ to, body }) {
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_FROM_NUMBER;
-  if (!sid || !token || !from || !to?.length) {
+  // Last-line filter so every Twilio path honors allowlist/blocklist
+  const recipients = filterAlertPhones(to);
+  if (!recipients.length) {
+    return { skipped: true, reason: 'no_allowed_recipients' };
+  }
+  if (!sid || !token || !from) {
     return { skipped: true, reason: 'sms_not_configured' };
   }
 
   const results = [];
-  for (const phone of to) {
+  for (const phone of recipients) {
     const auth = Buffer.from(`${sid}:${token}`).toString('base64');
     const params = new URLSearchParams({
       To: phone,
@@ -1247,8 +1263,11 @@ app.post('/api/jobs/digests', async (req, res) => {
     for (const license of licenses || []) {
       const settings = await loadRuleSettings(license.id);
       const contacts = await resolveRmoContacts(license);
-      const alertEmail = settings.alert_email || contacts.emails[0] || null;
-      const alertPhone = settings.alert_phone || contacts.phones[0] || null;
+      // Prefer settings, then membership contacts — each hop is allowlist/blocklist filtered
+      const alertEmail =
+        filterAlertEmails(settings.alert_email || null)[0] || contacts.emails[0] || null;
+      const alertPhone =
+        filterAlertPhones(settings.alert_phone || null)[0] || contacts.phones[0] || null;
       if (!alertEmail && !alertPhone) continue;
 
       const sinceIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();

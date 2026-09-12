@@ -33,6 +33,7 @@ Apply `supabase/migrations/005_compliance_settings_digests.sql`:
 | `CRON_SECRET` or `DIGEST_SECRET` | Protect scheduled digest runs |
 | `RESEND_API_KEY` / `ALERT_FROM_EMAIL` | Email delivery (else console log) |
 | `RMO_ALERT_EMAIL` | Fallback recipient if settings `alert_email` empty |
+| `ALERT_EMAIL_ALLOWLIST` / `ALERT_EMAIL_BLOCKLIST` | Pilot recipient filter — see [ALERTS.md](./ALERTS.md) |
 | Twilio vars | SMS on Express digest path when `alert_phone` set |
 
 Schedule morning digests (example cron):
