@@ -47,6 +47,12 @@ async function loadDashboard(sessionLicenseIds: string[], licenseNumber?: string
     .select('*', { count: 'exact', head: true })
     .eq('license_id', license.id);
 
+  const { count: unreviewedCount } = await supabase
+    .from('compliance_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('license_id', license.id)
+    .eq('rmo_reviewed', false);
+
   const { count: projectCount } = await supabase
     .from('projects')
     .select('*', { count: 'exact', head: true })
@@ -58,6 +64,7 @@ async function loadDashboard(sessionLicenseIds: string[], licenseNumber?: string
     licenses: list,
     logs: (logs || []) as ComplianceLog[],
     logCount: logCount || 0,
+    unreviewedCount: unreviewedCount || 0,
     activeProjects: projectCount || 0
   };
 }
@@ -106,6 +113,7 @@ export default async function DashboardPage({
           <p className="mt-1 text-slate-600">
             License #{data.license.license_number} · {data.license.classification} · WC{' '}
             {data.license.workers_comp_status}
+            {flagged ? ` · ${flagged} flagged in recent` : ''}
           </p>
         </div>
         <Suspense fallback={null}>
@@ -122,10 +130,15 @@ export default async function DashboardPage({
           <p className="text-xs uppercase tracking-wide text-slate-500">Compliance logs</p>
           <p className="mt-2 text-3xl font-semibold tabular-nums">{data.logCount}</p>
         </div>
-        <div className="border border-slate-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Flagged (recent)</p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums text-amber-800">{flagged}</p>
-        </div>
+        <Link
+          href={`/dashboard/inbox?license=${licenseNumber}`}
+          className="border border-amber-200 bg-amber-50 p-4 hover:border-amber-400"
+        >
+          <p className="text-xs uppercase tracking-wide text-amber-800">Needs review</p>
+          <p className="mt-2 text-3xl font-semibold tabular-nums text-amber-950">
+            {data.unreviewedCount}
+          </p>
+        </Link>
         <div className="border border-slate-200 bg-white p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">Critical (recent)</p>
           <p className="mt-2 text-3xl font-semibold tabular-nums text-red-800">{critical}</p>
