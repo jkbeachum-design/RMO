@@ -248,7 +248,7 @@ app.post('/api/webhooks/retell', async (req, res) => {
 
     // Step 8: Notify RMO if critical flags
     if (riskFlags.critical_flags && riskFlags.critical_flags.length > 0) {
-      await notifyRMO(license, riskFlags);
+      await notifyRMO(license, riskFlags, { logId: log[0].id });
     }
 
     return res.status(200).json({
@@ -622,13 +622,152 @@ async function upsertSubcontractor(licenseId, subData) {
 }
 
 // ============================================================================
-// NOTIFICATION: Alert RMO to Critical Flags
+// NOTIFICATION: Alert RMO to Critical Flags (email + SMS when configured)
 // ============================================================================
 
-async function notifyRMO(license, riskFlags) {
-  // TODO: Implement via email (SendGrid) or Twilio SMS
+async function resolveRmoContacts(license) {
+  const contacts = { emails: new Set(), phones: new Set() };
+
+  if (license.alert_email) contacts.emails.add(String(license.alert_email).trim());
+  if (license.alert_phone) contacts.phones.add(String(license.alert_phone).trim());
+
+  if (process.env.RMO_ALERT_EMAIL) {
+    String(process.env.RMO_ALERT_EMAIL)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((e) => contacts.emails.add(e));
+  }
+  if (process.env.RMO_ALERT_PHONE) {
+    String(process.env.RMO_ALERT_PHONE)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((p) => contacts.phones.add(p));
+  }
+
+  try {
+    const { data: members } = await supabase
+      .from('user_licenses')
+      .select('role, users(user_email, phone_number, role)')
+      .eq('license_id', license.id)
+      .in('role', ['RMO', 'ADMIN']);
+
+    for (const row of members || []) {
+      const u = Array.isArray(row.users) ? row.users[0] : row.users;
+      if (u?.user_email) contacts.emails.add(u.user_email);
+      if (u?.phone_number) contacts.phones.add(u.phone_number);
+    }
+  } catch (err) {
+    console.warn('Could not resolve RMO membership contacts:', err.message || err);
+  }
+
+  return {
+    emails: [...contacts.emails],
+    phones: [...contacts.phones]
+  };
+}
+
+async function sendEmailAlert({ to, subject, text }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.ALERT_FROM_EMAIL || 'RMO Compliance <onboarding@resend.dev>';
+  if (!apiKey || !to?.length) return { skipped: true, reason: 'email_not_configured' };
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject,
+      text
+    })
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.error('Resend email failed:', res.status, body);
+    return { ok: false, status: res.status, body };
+  }
+  return { ok: true };
+}
+
+async function sendSmsAlert({ to, body }) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  if (!sid || !token || !from || !to?.length) {
+    return { skipped: true, reason: 'sms_not_configured' };
+  }
+
+  const results = [];
+  for (const phone of to) {
+    const auth = Buffer.from(`${sid}:${token}`).toString('base64');
+    const params = new URLSearchParams({
+      To: phone,
+      From: from,
+      Body: body.slice(0, 1500)
+    });
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params.toString()
+      }
+    );
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error('Twilio SMS failed:', res.status, errBody);
+      results.push({ phone, ok: false });
+    } else {
+      results.push({ phone, ok: true });
+    }
+  }
+  return { ok: results.every((r) => r.ok), results };
+}
+
+async function notifyRMO(license, riskFlags, logMeta = {}) {
+  const flags = riskFlags.critical_flags || [];
+  const subject = `[RMO Compliance] Critical flags — ${license.entity_name} (#${license.license_number})`;
+  const text = [
+    `Critical compliance flags for ${license.entity_name} (CSLB #${license.license_number}).`,
+    '',
+    `Flags: ${flags.join(', ') || 'none'}`,
+    logMeta.logId ? `Log ID: ${logMeta.logId}` : null,
+    logMeta.dashboardUrl ? `Review: ${logMeta.dashboardUrl}` : null,
+    '',
+    'Open the RMO Compliance inbox to review and acknowledge.'
+  ]
+    .filter(Boolean)
+    .join('\n');
+
   console.log(`ALERT: Critical flags for ${license.entity_name} (${license.license_number})`);
-  console.log('Flags:', riskFlags.critical_flags);
+  console.log('Flags:', flags);
+
+  const contacts = await resolveRmoContacts(license);
+  const dashboardBase = process.env.DASHBOARD_URL || process.env.NEXT_PUBLIC_APP_URL || '';
+  const enrichedText = logMeta.logId && dashboardBase
+    ? `${text}\n\n${dashboardBase.replace(/\/$/, '')}/dashboard/${logMeta.logId}`
+    : text;
+
+  const emailResult = await sendEmailAlert({
+    to: contacts.emails,
+    subject,
+    text: enrichedText
+  });
+  const smsResult = await sendSmsAlert({
+    to: contacts.phones,
+    body: `RMO Compliance: critical flags on ${license.entity_name} (#${license.license_number}): ${flags.join(', ')}`
+  });
+
+  return { contacts, emailResult, smsResult };
 }
 
 // ============================================================================
@@ -844,7 +983,7 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
     }
 
     if (riskFlags.critical_flags?.length > 0) {
-      await notifyRMO(license, riskFlags);
+      await notifyRMO(license, riskFlags, { logId: log[0].id });
     }
 
     return res.status(200).json({
