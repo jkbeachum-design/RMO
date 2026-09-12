@@ -70,6 +70,19 @@ export function canUseMode(memberships: Membership[], mode: UserRole): boolean {
   return roles.includes(mode);
 }
 
+/** Roles the user holds on a specific license. */
+export function rolesOnLicense(memberships: Membership[], licenseId: string): UserRole[] {
+  return Array.from(
+    new Set(memberships.filter((m) => m.license_id === licenseId).map((m) => m.role))
+  );
+}
+
+/** True if memberships include RMO or ADMIN for the given license. */
+export function canManageLicenseTeam(memberships: Membership[], licenseId: string): boolean {
+  const roles = rolesOnLicense(memberships, licenseId);
+  return roles.includes('RMO') || roles.includes('ADMIN');
+}
+
 /** True if the session user may access this license UUID. */
 export function sessionHasLicenseId(session: SessionUser, licenseId: string): boolean {
   return (session.licenseIds || []).includes(licenseId);
@@ -88,6 +101,7 @@ export async function resolveAccessibleLicense(
     license_expire_date: string;
     rmo_name?: string;
     business_address?: string;
+    duty_statement?: string | null;
   };
   memberships: Membership[];
 } | null> {

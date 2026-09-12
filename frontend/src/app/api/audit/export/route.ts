@@ -102,7 +102,7 @@ export async function GET(req: Request) {
       projects: (projects || []).length,
       signed_audit_months: (auditReports || []).length
     },
-    duty_statement: `RMO of record: ${license.rmo_name || 'n/a'}. Classification: ${
+    duty_statement: license.duty_statement || `RMO of record: ${license.rmo_name || 'n/a'}. Classification: ${
       license.classification || 'n/a'
     }.`,
     supervision_activities: activities || [],

@@ -12,9 +12,10 @@
 
 ## Roles
 
-- Account roles on `users.role` and per-company roles on `user_licenses.role`: `RMO`, `OPERATOR`, plus prepared `ADMIN` / `PM` / `FOREMAN`.
-- UI modes: **RMO dashboard** vs **Operator PWA**. Mode switch is only shown when the user has both RMO-class and operator-class memberships.
+- Account roles on `users.role` and per-company roles on `user_licenses.role`: `RMO`, `OPERATOR`, `ADMIN`, `PM`, `FOREMAN`.
+- UI modes: **RMO dashboard** vs **Operator PWA**. Mode switch is only shown when the user has both RMO-class (`RMO`/`ADMIN`) and operator-class (`OPERATOR`/`PM`/`FOREMAN`) memberships.
 - Users only see licenses listed in `user_licenses`.
+- Team matrix + onboarding: see [ROLES.md](./ROLES.md).
 
 ## Env vars
 

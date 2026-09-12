@@ -71,6 +71,18 @@ export type License = {
   license_expire_date: string;
   rmo_name: string;
   business_address?: string;
+  ownership_pct?: number | null;
+  is_subsidiary?: boolean | null;
+  is_joint_venture?: boolean | null;
+  officers_json?: unknown;
+  contractor_bond_status?: string | null;
+  contractor_bond_expire_date?: string | null;
+  bqi_status?: string | null;
+  bqi_expire_date?: string | null;
+  duty_statement?: string | null;
+  association_docs_url?: string | null;
+  onboarding_completed_at?: string | null;
+  onboarding_step?: string | null;
 };
 
 export type ComplianceLog = {
