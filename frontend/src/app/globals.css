@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --rmo-ink: #0f2a2a;
+  --rmo-accent: #0f766e;
+  --rmo-paper: #f4f6f5;
+}
+
+body {
+  color: #0f172a;
+  background: var(--rmo-paper);
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.font-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+}

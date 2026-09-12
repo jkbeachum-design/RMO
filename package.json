@@ -1,12 +1,14 @@
 {
-  "name": "vanguard-backend",
+  "name": "rmo-compliance",
   "version": "1.0.0",
-  "description": "Vanguard RMO Copilot — Retell webhook + Claude extraction + compliance rule engine",
+  "description": "RMO Compliance — Retell webhook + Claude extraction + compliance rule engine",
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "build": "echo 'no build needed'"
+    "build": "echo 'no build needed'",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build"
   },
   "keywords": [
     "rmo",
