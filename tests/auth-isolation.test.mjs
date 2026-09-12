@@ -98,7 +98,7 @@ describe('signed session cookies', () => {
 
   it('rejects forged plaintext base64 JSON (old cookie format)', () => {
     const forged = Buffer.from(
-      JSON.stringify({ email: 'jonathan@buildmyoffice.com', name: 'Hacker', mode: 'RMO' }),
+      JSON.stringify({ email: 'jbeachum@buildmyoffice.com', name: 'Hacker', mode: 'RMO' }),
       'utf8'
     ).toString('base64url');
     assert.equal(parseSessionToken(forged), null);

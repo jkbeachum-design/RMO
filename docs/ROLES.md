@@ -44,6 +44,11 @@ Inviting a new email creates a `users` row with a one-time temporary password (r
 - **Roles** → `/dashboard/roles` — matrix + team roster
 - **Onboarding** → `/dashboard/onboarding` — stepped company wizard
 
+## Pilot roster note
+
+- **Jonathan Beachum** (`jbeachum@buildmyoffice.com`) — RMO on Beachum `#836089` and Vanguard `#1160775`
+- **Eric** (`ERICJ379@gmail.com`) — company principal / ADMIN on Vanguard `#1160775`
+
 ## Verify
 
 1. Apply migrations 004 + 006.
