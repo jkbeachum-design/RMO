@@ -28,12 +28,18 @@ export type ExtractedData = {
     contract_value?: number | null;
     trades?: string[];
     subcontractors_mentioned?: string[];
+    permit_number?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    status?: string;
   }>;
   subcontractors?: Array<{
     company_name?: string;
     cslb_license_number?: string | null;
     trade?: string;
     coi_expiration_date?: string | null;
+    coi_document_url?: string | null;
+    coi_current?: boolean;
     cslb_verified?: boolean;
   }>;
   crew_status?: {
@@ -46,6 +52,12 @@ export type ExtractedData = {
     permit_number?: string | null;
     permit_status?: string;
   }>;
+  file_urls?: {
+    cois?: Array<string | { company_name?: string | null; url: string }>;
+    permits?: string[];
+    photos?: string[];
+  };
+  notes?: string | null;
   retell_call_id?: string;
   from_number?: string | null;
 };

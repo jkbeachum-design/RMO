@@ -35,7 +35,7 @@ export default function OperatorHomePage() {
             href="/operator/submit-report"
             className="block border border-slate-300 bg-white px-4 py-4 text-center font-semibold text-slate-900 hover:bg-slate-50"
           >
-            Submit manual report
+            Submit structured report
           </a>
 
           <a
@@ -44,6 +44,16 @@ export default function OperatorHomePage() {
           >
             View your reports
           </a>
+        </div>
+
+        <div className="mt-8 border border-teal-800/20 bg-teal-50 p-4 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">Not sure which to use?</p>
+          <p className="mt-1">
+            <strong>Call</strong> if you&apos;re on a job site (quick, hands-free).
+            <br />
+            <strong>Structured form</strong> if you need multi-project detail, permits, or COI
+            uploads.
+          </p>
         </div>
       </div>
     </AppShell>
