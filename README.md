@@ -30,13 +30,15 @@ Retell webhook: `/api/webhooks/retell` · event `call_ended`
 cd frontend
 npm install
 cp .env.example .env.local   # already wired for pilot if using shared secrets
-npm run dev                  # http://localhost:3000
+npm run dev                  # http://localhost:3020
 ```
 
 **Pilot login**
 - Email: `jonathan@buildmyoffice.com`
 - Password: `rmo-pilot` (override with `PILOT_PASSWORD`)
 - Switch between **RMO** and **Operator** modes after login
+
+**Ports (this machine):** homepage `3000`, backend `3001`, Paperless AI `3010`, frontend `3020`
 
 **Operator dial-in:** +1 (916) 848-5224
 

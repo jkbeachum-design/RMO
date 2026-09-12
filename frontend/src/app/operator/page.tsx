@@ -45,6 +45,15 @@ export default function OperatorHomePage() {
             View your reports
           </a>
         </div>
+
+        <div className="mt-8 border border-teal-800/20 bg-teal-50 p-4 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">Not sure which to use?</p>
+          <p className="mt-1">
+            <strong>Call</strong> if you&apos;re on a job site (quick, hands-free).
+            <br />
+            <strong>Submit form</strong> if you&apos;re in the office (detailed docs + uploads).
+          </p>
+        </div>
       </div>
     </AppShell>
   );
