@@ -13,6 +13,11 @@ Compliance automation for California RMOs: Retell voice check-ins → Claude ext
 | `frontend/` | Next.js RMO dashboard + Operator PWA |
 | `supabase/migrations/` | Schema / RLS migrations |
 | `docs/AUTH.md` | Auth, membership, env, verification |
+| `docs/ALERTS.md` | Inbox + critical alerts |
+| `docs/PORTFOLIO.md` | Firm portfolio / 3-firm / 90-day clocks |
+| `docs/EXPORT.md` | Audit defense PDF + ZIP export |
+| `docs/RULES.md` | Configurable rules + digests |
+| `docs/ROLES.md` | Roles matrix + company onboarding |
 | `vercel.json` | Backend Vercel config |
 
 ## Backend
