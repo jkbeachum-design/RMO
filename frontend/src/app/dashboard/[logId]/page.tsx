@@ -4,7 +4,8 @@ import { format } from 'date-fns';
 import AppShell from '@/components/AppShell';
 import { RiskFlagList } from '@/components/RiskFlagBadge';
 import ReviewActions from '@/components/ReviewActions';
-import { getSession } from '@/lib/auth';
+import { getSession, refreshSessionMemberships } from '@/lib/auth';
+import { assertLogAccess } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import type { ComplianceLog, ExtractedData, License } from '@/lib/types';
 
@@ -16,6 +17,19 @@ export default async function LogDetailPage({
   const session = getSession();
   if (!session) redirect('/');
   if (session.mode !== 'RMO') redirect('/operator');
+
+  const live = await refreshSessionMemberships(session);
+  const allowed = await assertLogAccess(live, params.logId);
+  if (!allowed) {
+    return (
+      <AppShell mode="RMO" name={session.name}>
+        <p>Log not found or access denied.</p>
+        <Link href="/dashboard" className="text-teal-800 underline">
+          Back to dashboard
+        </Link>
+      </AppShell>
+    );
+  }
 
   const supabase = getSupabaseAdmin();
   const { data } = await supabase

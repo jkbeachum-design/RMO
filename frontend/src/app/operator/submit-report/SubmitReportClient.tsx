@@ -1,41 +1,54 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
-import { DEFAULT_LICENSE } from '@/lib/constants';
+
+type LicenseOption = {
+  id: string;
+  license_number: string;
+  entity_name: string;
+};
 
 export default function SubmitReportClient({ userName }: { userName: string }) {
   const router = useRouter();
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [licenses, setLicenses] = useState<LicenseOption[]>([]);
+  const [licenseNumber, setLicenseNumber] = useState('');
+
+  useEffect(() => {
+    fetch('/api/me')
+      .then((r) => r.json())
+      .then((data) => {
+        const list = (data.licenses || []) as LicenseOption[];
+        setLicenses(list);
+        if (list[0]) setLicenseNumber(list[0].license_number);
+      })
+      .catch(() => setMessage('Could not load your company memberships.'));
+  }, []);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setMessage('');
     const form = new FormData(e.currentTarget);
+    const selectedLicense = String(form.get('license_number') || licenseNumber);
+
     const payload = {
-      event: 'call_ended',
-      call_id: `manual-${Date.now()}`,
-      transcript: [
-        `Operator ${form.get('operator_name')} reporting for license ${form.get('license_number')}.`,
-        `Project at ${form.get('address')}, contract value ${form.get('contract_value') || 'unknown'}.`,
-        `Trades: ${form.get('trades')}.`,
-        `Subcontractors: ${form.get('subcontractors') || 'none named'}.`,
-        `Crew status: ${form.get('crew')}.`,
-        `Permits: ${form.get('permits') || 'none'}.`,
-        form.get('notes') ? `Notes: ${form.get('notes')}` : ''
-      ]
-        .filter(Boolean)
-        .join(' ')
+      operator_name: String(form.get('operator_name') || ''),
+      license_number: selectedLicense,
+      address: String(form.get('address') || ''),
+      contract_value: String(form.get('contract_value') || ''),
+      trades: String(form.get('trades') || ''),
+      subcontractors: String(form.get('subcontractors') || ''),
+      crew: String(form.get('crew') || ''),
+      permits: String(form.get('permits') || ''),
+      notes: String(form.get('notes') || '')
     };
 
-    // Prefer dedicated backend webhook if configured; otherwise local API stub stores via backend URL
-    const backend =
-      process.env.NEXT_PUBLIC_BACKEND_URL || 'https://temporary-speedy-ochre-5dx4e3g.vercel.app';
-
-    const res = await fetch(`${backend}/api/webhooks/retell`, {
+    // Authenticated Next.js proxy — attaches webhook secret server-side; enforces membership
+    const res = await fetch('/api/operator/submit-report', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -49,7 +62,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
     }
 
     setMessage('Report submitted. It will appear in the compliance log shortly.');
-    setTimeout(() => router.push('/operator/history'), 1200);
+    setTimeout(() => router.push(`/operator/history?license=${selectedLicense}`), 1200);
   }
 
   return (
@@ -65,19 +78,29 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
             <span className="mb-1 block text-slate-600">Operator name</span>
             <input
               name="operator_name"
-              defaultValue="Jon Kim Beachum"
+              defaultValue={userName}
               required
               className="w-full rounded border border-slate-300 px-3 py-2"
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">License number</span>
-            <input
+            <span className="mb-1 block text-slate-600">Company / license</span>
+            <select
               name="license_number"
-              defaultValue={DEFAULT_LICENSE}
+              value={licenseNumber}
+              onChange={(e) => setLicenseNumber(e.target.value)}
               required
               className="w-full rounded border border-slate-300 px-3 py-2"
-            />
+            >
+              {licenses.map((l) => (
+                <option key={l.id} value={l.license_number}>
+                  {l.entity_name} (#{l.license_number})
+                </option>
+              ))}
+            </select>
+            {!licenses.length ? (
+              <span className="mt-1 block text-xs text-amber-700">Loading memberships…</span>
+            ) : null}
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Project address</span>
@@ -118,15 +141,16 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
             <textarea name="notes" rows={3} className="w-full rounded border border-slate-300 px-3 py-2" />
           </label>
 
+          {message ? <p className="text-sm text-slate-700">{message}</p> : null}
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !licenses.length}
             className="w-full rounded bg-[#0f2a2a] px-4 py-3 font-semibold text-white hover:bg-[#163838] disabled:opacity-60"
           >
             {loading ? 'Submitting…' : 'Submit report'}
           </button>
         </form>
-        {message ? <p className="mt-4 text-sm text-slate-700">{message}</p> : null}
       </div>
     </AppShell>
   );

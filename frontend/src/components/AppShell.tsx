@@ -1,12 +1,12 @@
 import Navbar from './Navbar';
-import type { UserRole } from '@/lib/types';
+import type { AppMode } from '@/lib/types';
 
 export default function AppShell({
   mode,
   name,
   children
 }: {
-  mode: UserRole;
+  mode: AppMode;
   name: string;
   children: React.ReactNode;
 }) {

@@ -1,33 +1,33 @@
 import { NextResponse } from 'next/server';
 import {
   COMPLIANCE_PHONE,
-  PILOT_EMAIL,
-  PILOT_NAME,
   SESSION_COOKIE,
-  createSessionToken,
-  getPilotPassword
+  authenticateUser,
+  createSessionToken
 } from '@/lib/auth';
-import type { UserRole } from '@/lib/types';
+import type { AppMode } from '@/lib/types';
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
-  const mode = (body.mode === 'OPERATOR' ? 'OPERATOR' : 'RMO') as UserRole;
+  const mode = (body.mode === 'OPERATOR' ? 'OPERATOR' : 'RMO') as AppMode;
 
-  if (email !== PILOT_EMAIL || password !== getPilotPassword()) {
-    return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+  const result = await authenticateUser(email, password, mode);
+  if ('error' in result) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  const token = createSessionToken({
-    email: PILOT_EMAIL,
-    name: PILOT_NAME,
-    mode
-  });
-
+  const token = createSessionToken(result.user);
   const res = NextResponse.json({
     ok: true,
-    user: { email: PILOT_EMAIL, name: PILOT_NAME, mode },
+    user: {
+      email: result.user.email,
+      name: result.user.name,
+      mode: result.user.mode,
+      role: result.user.role,
+      licenseIds: result.user.licenseIds
+    },
     compliancePhone: COMPLIANCE_PHONE
   });
 

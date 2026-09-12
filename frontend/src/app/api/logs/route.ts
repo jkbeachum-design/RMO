@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, refreshSessionMemberships } from '@/lib/auth';
+import { resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function GET(req: Request) {
@@ -8,25 +9,23 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const live = await refreshSessionMemberships(session);
   const { searchParams } = new URL(req.url);
-  const licenseNumber = searchParams.get('license_number') || '836089';
-  const limit = Number(searchParams.get('limit') || 50);
+  const licenseNumber = searchParams.get('license_number');
+  const limit = Math.min(Number(searchParams.get('limit') || 50), 200);
 
-  const supabase = getSupabaseAdmin();
-  const { data: license } = await supabase
-    .from('licenses')
-    .select('id')
-    .eq('license_number', licenseNumber)
-    .single();
-
-  if (!license) {
-    return NextResponse.json({ error: 'License not found' }, { status: 404 });
+  const resolved = await resolveAccessibleLicense(live, licenseNumber);
+  if (!resolved) {
+    return NextResponse.json({ error: 'License not found or access denied' }, { status: 403 });
   }
 
+  // Operators only see logs for licenses they belong to (already enforced).
+  // RMOs see all logs for the selected company; operators get the same scoped list for history.
+  const supabase = getSupabaseAdmin();
   const { data: logs, error } = await supabase
     .from('compliance_logs')
     .select('*')
-    .eq('license_id', license.id)
+    .eq('license_id', resolved.license.id)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -34,5 +33,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ logs: logs || [] });
+  return NextResponse.json({
+    logs: logs || [],
+    license: {
+      id: resolved.license.id,
+      license_number: resolved.license.license_number,
+      entity_name: resolved.license.entity_name
+    }
+  });
 }

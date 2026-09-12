@@ -2,16 +2,16 @@
  * Vanguard RMO Compliance Copilot — Node.js Backend
  *
  * Handles:
- * - Retell webhook ingestion (call_ended events)
+ * - Retell webhook ingestion (call_ended events) — authenticated via shared secret
  * - LLM-based extraction refinement (Claude)
  * - Rule engine (compliance flag evaluation)
- * - Supabase storage
+ * - Supabase storage (service_role — trusted server job only)
  *
  * Deploy to Vercel with environment variables:
  * - SUPABASE_URL
  * - SUPABASE_KEY (service_role)
  * - ANTHROPIC_API_KEY
- * - RETELL_API_KEY (optional for pilot signature verify)
+ * - RETELL_WEBHOOK_SECRET (required in production; RETELL_API_KEY accepted as fallback)
  */
 
 require('dotenv').config();
@@ -20,6 +20,7 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const Anthropic = require('@anthropic-ai/sdk');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_KEY', 'ANTHROPIC_API_KEY'];
 
@@ -53,12 +54,63 @@ const anthropic = isConfigured(process.env.ANTHROPIC_API_KEY)
 
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 
+/**
+ * Authenticate Retell (and trusted Next.js proxy) webhooks.
+ * Accepts:
+ *   - Authorization: Bearer <RETELL_WEBHOOK_SECRET|RETELL_API_KEY>
+ *   - x-retell-signature: <secret>  (shared-secret mode)
+ *   - x-webhook-secret: <secret>
+ *
+ * In production, a secret MUST be configured or requests are rejected.
+ */
+function getWebhookSecret() {
+  if (isConfigured(process.env.RETELL_WEBHOOK_SECRET)) return process.env.RETELL_WEBHOOK_SECRET;
+  if (isConfigured(process.env.RETELL_API_KEY)) return process.env.RETELL_API_KEY;
+  return null;
+}
+
+function timingSafeEqualString(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function verifyRetellWebhook(req) {
+  const secret = getWebhookSecret();
+  const isProd = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+
+  if (!secret) {
+    if (isProd) {
+      console.error('RETELL_WEBHOOK_SECRET (or RETELL_API_KEY) is required in production');
+      return false;
+    }
+    console.warn('WARNING: Retell webhook auth disabled (no RETELL_WEBHOOK_SECRET in non-production)');
+    return true;
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const signature =
+    req.headers['x-retell-signature'] ||
+    req.headers['x-webhook-secret'] ||
+    '';
+
+  if (bearer && timingSafeEqualString(bearer, secret)) return true;
+  if (signature && timingSafeEqualString(String(signature), secret)) return true;
+  return false;
+}
+
 // ============================================================================
 // WEBHOOK: Retell AI Call Ended
 // ============================================================================
 
 app.post('/api/webhooks/retell', async (req, res) => {
   try {
+    if (!verifyRetellWebhook(req)) {
+      return res.status(401).json({ error: 'Unauthorized webhook' });
+    }
+
     if (!supabase || !anthropic) {
       return res.status(503).json({
         error: 'Server misconfigured',
@@ -262,13 +314,14 @@ REQUIRED Fields:
 - permits: Array of {project_address, permit_number, permit_status}
 
 RULES:
-1. If license_number is not explicitly stated, infer from context (e.g., "Beachum" → "836089", "Vanguard" → "1160775")
-2. If a contract value is mentioned with "K" (e.g., "15K"), convert to number (15000)
-3. If COI date is mentioned (e.g., "expires June 2027"), format as ISO date YYYY-MM-DD
-4. If operator says they hired crew or employees, set has_direct_employees to true
-5. Mark trades as an array of strings (e.g., ["Framing", "Electrical"])
-6. Set cslb_verified to false unless the transcript clearly confirms CSLB verification
-7. Prefer Beachum "836089" when ambiguous during pilot testing
+1. If license_number is not explicitly stated, leave it null — do not guess a default license
+2. If a company name is clearly stated, map known entities when present in the transcript (e.g. "Beachum" → "836089", "Vanguard" → "1160775") only when unambiguous
+3. If a contract value is mentioned with "K" (e.g., "15K"), convert to number (15000)
+4. If COI date is mentioned (e.g., "expires June 2027"), format as ISO date YYYY-MM-DD
+5. If operator says they hired crew or employees, set has_direct_employees to true
+6. Mark trades as an array of strings (e.g., ["Framing", "Electrical"])
+7. Set cslb_verified to false unless the transcript clearly confirms CSLB verification
+8. Never invent a license_number that was not stated or clearly implied by company name
 
 Transcript:
 """
@@ -581,7 +634,7 @@ app.get('/api/health', (req, res) => {
     configured: {
       supabase: Boolean(supabase),
       anthropic: Boolean(anthropic),
-      retell_key: isConfigured(process.env.RETELL_API_KEY)
+      retell_webhook_auth: Boolean(getWebhookSecret())
     },
     missing_env: missingEnv
   });

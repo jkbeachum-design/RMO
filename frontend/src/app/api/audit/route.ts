@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
+import { getSession, refreshSessionMemberships } from '@/lib/auth';
+import { resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function GET(req: Request) {
@@ -8,19 +9,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const live = await refreshSessionMemberships(session);
   const { searchParams } = new URL(req.url);
-  const licenseNumber = searchParams.get('license_number') || '836089';
+  const licenseNumber = searchParams.get('license_number');
 
-  const supabase = getSupabaseAdmin();
-  const { data: license } = await supabase
-    .from('licenses')
-    .select('*')
-    .eq('license_number', licenseNumber)
-    .single();
-
-  if (!license) {
-    return NextResponse.json({ error: 'License not found' }, { status: 404 });
+  const resolved = await resolveAccessibleLicense(live, licenseNumber);
+  if (!resolved) {
+    return NextResponse.json({ error: 'License not found or access denied' }, { status: 403 });
   }
+
+  const license = resolved.license;
+  const supabase = getSupabaseAdmin();
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -52,23 +51,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const live = await refreshSessionMemberships(session);
   const body = await req.json().catch(() => ({}));
-  const licenseNumber = body.license_number || '836089';
+  const licenseNumber = body.license_number || null;
   const notes = body.notes || '';
   const signature = body.signature || null;
   const reportJson = body.report_json || null;
 
-  const supabase = getSupabaseAdmin();
-  const { data: license } = await supabase
-    .from('licenses')
-    .select('id')
-    .eq('license_number', licenseNumber)
-    .single();
-
-  if (!license) {
-    return NextResponse.json({ error: 'License not found' }, { status: 404 });
+  const resolved = await resolveAccessibleLicense(live, licenseNumber);
+  if (!resolved) {
+    return NextResponse.json({ error: 'License not found or access denied' }, { status: 403 });
   }
 
+  const supabase = getSupabaseAdmin();
   const now = new Date();
   const auditMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
@@ -76,7 +71,7 @@ export async function POST(req: Request) {
     .from('monthly_audit_reports')
     .upsert(
       {
-        license_id: license.id,
+        license_id: resolved.license.id,
         audit_month: auditMonth,
         total_calls: reportJson?.total_calls || 0,
         total_reports: reportJson?.total_calls || 0,

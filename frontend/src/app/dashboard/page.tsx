@@ -4,26 +4,36 @@ import { Suspense } from 'react';
 import AppShell from '@/components/AppShell';
 import ComplianceLogTable from '@/components/ComplianceLogTable';
 import LicenseSwitcher from '@/components/LicenseSwitcher';
-import { getSession } from '@/lib/auth';
-import { DEFAULT_LICENSE } from '@/lib/constants';
+import { getSession, refreshSessionMemberships } from '@/lib/auth';
+import { loadMemberships, membershipLicenseIds, resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import type { ComplianceLog, License } from '@/lib/types';
 
-async function loadDashboard(licenseNumber: string) {
-  const supabase = getSupabaseAdmin();
+async function loadDashboard(sessionLicenseIds: string[], licenseNumber?: string) {
+  if (!sessionLicenseIds.length) return null;
 
+  const supabase = getSupabaseAdmin();
   const { data: licenses } = await supabase
     .from('licenses')
-    .select('id, license_number, entity_name, workers_comp_status, license_expire_date, classification')
+    .select(
+      'id, license_number, entity_name, workers_comp_status, license_expire_date, classification'
+    )
+    .in('id', sessionLicenseIds)
     .order('license_number');
 
-  const { data: license } = await supabase
+  const list = (licenses || []) as License[];
+  if (!list.length) return null;
+
+  const license =
+    (licenseNumber && list.find((l) => l.license_number === licenseNumber)) || list[0];
+
+  const { data: fullLicense } = await supabase
     .from('licenses')
     .select('*')
-    .eq('license_number', licenseNumber)
+    .eq('id', license.id)
     .single();
 
-  if (!license) return null;
+  if (!fullLicense) return null;
 
   const { data: logs } = await supabase
     .from('compliance_logs')
@@ -32,6 +42,11 @@ async function loadDashboard(licenseNumber: string) {
     .order('created_at', { ascending: false })
     .limit(20);
 
+  const { count: logCount } = await supabase
+    .from('compliance_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('license_id', license.id);
+
   const { count: projectCount } = await supabase
     .from('projects')
     .select('*', { count: 'exact', head: true })
@@ -39,9 +54,10 @@ async function loadDashboard(licenseNumber: string) {
     .eq('status', 'ACTIVE');
 
   return {
-    license: license as License,
-    licenses: (licenses || []) as License[],
+    license: fullLicense as License,
+    licenses: list,
     logs: (logs || []) as ComplianceLog[],
+    logCount: logCount || 0,
     activeProjects: projectCount || 0
   };
 }
@@ -55,17 +71,29 @@ export default async function DashboardPage({
   if (!session) redirect('/');
   if (session.mode !== 'RMO') redirect('/operator');
 
-  const licenseNumber = searchParams.license || DEFAULT_LICENSE;
-  const data = await loadDashboard(licenseNumber);
+  const live = await refreshSessionMemberships(session);
+  const memberships = await loadMemberships(live.userId);
+  const licenseIds = membershipLicenseIds(memberships);
 
-  if (!data) {
+  const resolved = await resolveAccessibleLicense(live, searchParams.license);
+  if (!resolved) {
     return (
       <AppShell mode="RMO" name={session.name}>
-        <p>License not found.</p>
+        <p>No company memberships found for your account.</p>
       </AppShell>
     );
   }
 
+  const data = await loadDashboard(licenseIds, resolved.license.license_number);
+  if (!data) {
+    return (
+      <AppShell mode="RMO" name={session.name}>
+        <p>License not found or access denied.</p>
+      </AppShell>
+    );
+  }
+
+  const licenseNumber = data.license.license_number;
   const flagged = data.logs.filter((l) => l.risk_flags?.flagged).length;
   const critical = data.logs.filter((l) => (l.risk_flags?.critical_flags || []).length > 0).length;
 
@@ -92,14 +120,14 @@ export default async function DashboardPage({
         </div>
         <div className="border border-slate-200 bg-white p-4">
           <p className="text-xs uppercase tracking-wide text-slate-500">Compliance logs</p>
-          <p className="mt-2 text-3xl font-semibold tabular-nums">{data.logs.length}</p>
+          <p className="mt-2 text-3xl font-semibold tabular-nums">{data.logCount}</p>
         </div>
         <div className="border border-slate-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Flagged reports</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Flagged (recent)</p>
           <p className="mt-2 text-3xl font-semibold tabular-nums text-amber-800">{flagged}</p>
         </div>
         <div className="border border-slate-200 bg-white p-4">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Critical flags</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Critical (recent)</p>
           <p className="mt-2 text-3xl font-semibold tabular-nums text-red-800">{critical}</p>
         </div>
       </div>
