@@ -13,7 +13,8 @@ const RMO_LINKS = [
   { href: '/dashboard/supervision', label: 'Supervision' },
   { href: '/dashboard/vault', label: 'Vault' },
   { href: '/dashboard/compliance-log', label: 'Compliance Log' },
-  { href: '/dashboard/audit-report', label: 'Monthly Audit' }
+  { href: '/dashboard/audit-report', label: 'Monthly Audit' },
+  { href: '/dashboard/export', label: 'Export' }
 ];
 
 const OPERATOR_LINKS = [
