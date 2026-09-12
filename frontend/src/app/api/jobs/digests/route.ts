@@ -3,6 +3,7 @@ import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { loadMemberships, membershipLicenseIds } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { isLowInvolvement, mergeComplianceSettings } from '@/lib/rules';
+import { filterAlertEmails } from '@/lib/alertRecipients';
 
 type SettingsRow = Record<string, unknown>;
 
@@ -29,11 +30,15 @@ function settingsFromRow(row: SettingsRow | null | undefined) {
 }
 
 async function sendEmail(to: string, subject: string, text: string) {
+  const recipients = filterAlertEmails(to);
+  if (!recipients.length) {
+    return { skipped: true as const, reason: 'no_allowed_recipients' as const };
+  }
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.ALERT_FROM_EMAIL || 'RMO Compliance <onboarding@resend.dev>';
   if (!apiKey) {
-    console.log('DIGEST email (console):', subject, '\n', text);
-    return { skipped: true as const };
+    console.log('DIGEST email (console):', subject, '\n', text, '\n→', recipients.join(', '));
+    return { skipped: true as const, reason: 'email_not_configured' as const };
   }
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -41,7 +46,7 @@ async function sendEmail(to: string, subject: string, text: string) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ from, to: [to], subject, text })
+    body: JSON.stringify({ from, to: recipients, subject, text })
   });
   if (!res.ok) {
     console.error('digest email failed', await res.text());
@@ -155,15 +160,18 @@ export async function POST(req: NextRequest) {
         : 'Involvement within threshold'
     ].join('\n');
 
-    const to = settings.alert_email || process.env.RMO_ALERT_EMAIL || null;
+    const rawTo = settings.alert_email || process.env.RMO_ALERT_EMAIL || null;
+    const to = filterAlertEmails(rawTo)[0] || null;
     let deliveredEmail = false;
     if (to) {
       const emailResult = await sendEmail(
-        to.split(',')[0].trim(),
+        to,
         `[RMO Digest] ${license.license_number}`,
         body
       );
       deliveredEmail = Boolean(emailResult.ok);
+    } else if (rawTo) {
+      console.log('DIGEST (recipients filtered by allowlist/blocklist):', body);
     } else {
       console.log('DIGEST (no alert_email):', body);
     }
@@ -181,12 +189,14 @@ export async function POST(req: NextRequest) {
 
     if (lowInvolvement) {
       const alertBody = `LOW INVOLVEMENT alert for ${license.license_number}: threshold ${settings.low_involvement_days} days.`;
+      let lowDelivered = false;
       if (to) {
-        await sendEmail(
-          to.split(',')[0].trim(),
+        const lowResult = await sendEmail(
+          to,
           `[RMO] Low involvement — ${license.license_number}`,
           alertBody
         );
+        lowDelivered = Boolean(lowResult.ok);
       } else {
         console.log('LOW_INVOLVEMENT:', alertBody);
       }
@@ -196,7 +206,7 @@ export async function POST(req: NextRequest) {
           license_id: license.id,
           kind: 'LOW_INVOLVEMENT',
           payload: { days, threshold: settings.low_involvement_days },
-          delivered_email: Boolean(to),
+          delivered_email: lowDelivered,
           delivered_sms: false
         }
       ]);
