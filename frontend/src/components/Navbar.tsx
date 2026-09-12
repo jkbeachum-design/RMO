@@ -8,6 +8,7 @@ import type { AppMode } from '@/lib/types';
 const RMO_LINKS = [
   { href: '/dashboard', label: 'Overview' },
   { href: '/dashboard/inbox', label: 'Inbox' },
+  { href: '/dashboard/projects', label: 'Projects' },
   { href: '/dashboard/vault', label: 'Vault' },
   { href: '/dashboard/compliance-log', label: 'Compliance Log' },
   { href: '/dashboard/audit-report', label: 'Monthly Audit' }
