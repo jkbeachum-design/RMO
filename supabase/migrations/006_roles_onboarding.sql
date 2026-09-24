@@ -28,6 +28,11 @@ CREATE INDEX IF NOT EXISTS company_invites_email_idx ON public.company_invites (
 COMMENT ON TABLE public.company_invites IS
   'Pending team invites with target role. RMO/ADMIN manage memberships; invitee accepts with matching email.';
 
+-- Data API grants (required for PostgREST after Oct 30, 2026; RLS still enforces access)
+grant select on public.company_invites to anon;
+grant select, insert, update, delete on public.company_invites to authenticated;
+grant select, insert, update, delete on public.company_invites to service_role;
+
 ALTER TABLE public.company_invites ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS rmo_company_invites_select ON public.company_invites;

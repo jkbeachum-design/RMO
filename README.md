@@ -62,3 +62,5 @@ npm test
 ## Database
 
 Apply `supabase/migrations/001_auth_company_isolation.sql` before multi-user production.
+
+- After **Oct 30, 2026**, new `public` tables need explicit Data API `GRANT`s (`anon` / `authenticated` / `service_role`) or they are unreachable via PostgREST. Pattern and template: [`supabase/README.md`](supabase/README.md). Existing live tables already have grants.
