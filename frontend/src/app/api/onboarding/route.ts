@@ -180,10 +180,11 @@ export async function POST(req: NextRequest) {
   const insertRow: Record<string, unknown> = {
     license_number: licenseNumber,
     entity_name: entityName,
-    rmo_name: String(body.rmo_name || body.rmoName || live.name || '').trim() || null,
-    classification: String(body.classification || '').trim() || null,
-    business_address: String(body.business_address || body.businessAddress || '').trim() || null,
-    workers_comp_status: String(body.workers_comp_status || body.workersCompStatus || '').trim() || null,
+    rmo_name: String(body.rmo_name || body.rmoName || live.name || '').trim() || live.name || '',
+    classification: String(body.classification || '').trim() || '',
+    business_address: String(body.business_address || body.businessAddress || '').trim() || '',
+    workers_comp_status:
+      String(body.workers_comp_status || body.workersCompStatus || '').trim() || 'UNKNOWN',
     onboarding_step: 'company',
     onboarding_completed_at: null
   };
