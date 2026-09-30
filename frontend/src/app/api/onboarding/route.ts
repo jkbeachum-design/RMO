@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, refreshSessionMemberships } from '@/lib/auth';
+import {
+  getSession,
+  refreshSessionMemberships,
+  createSessionToken,
+  SESSION_COOKIE
+} from '@/lib/auth';
 import {
   loadMemberships,
   membershipLicenseIds,
-  canManageLicenseTeam
+  canManageLicenseTeam,
+  canCreateCompanies,
+  rolesForUser
 } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import {
   onboardingChecklist,
   onboardingComplete,
   nextOnboardingStep,
+  normalizeLicenseNumber,
+  isValidLicenseNumber,
   type OnboardingStepId
 } from '@/lib/roles';
 
@@ -42,14 +51,41 @@ async function requireRmo() {
   return refreshSessionMemberships(session);
 }
 
+function licenseOptionsFromMemberships(
+  memberships: Awaited<ReturnType<typeof loadMemberships>>
+) {
+  const seen = new Set<string>();
+  const licenses = [];
+  for (const m of memberships) {
+    if (seen.has(m.license_id)) continue;
+    seen.add(m.license_id);
+    licenses.push({
+      id: m.license_id,
+      license_number: m.licenses?.license_number,
+      entity_name: m.licenses?.entity_name
+    });
+  }
+  return licenses;
+}
+
 export async function GET(req: NextRequest) {
   const live = await requireRmo();
   if (!live) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const memberships = await loadMemberships(live.userId);
   const allowedIds = membershipLicenseIds(memberships);
+  const canCreate = canCreateCompanies(memberships);
+
   if (!allowedIds.length) {
-    return NextResponse.json({ error: 'No company memberships' }, { status: 403 });
+    return NextResponse.json({
+      license_id: null,
+      license: null,
+      checklist: null,
+      complete: false,
+      can_edit: false,
+      can_create: canCreate,
+      licenses: []
+    });
   }
 
   const licenseId = req.nextUrl.searchParams.get('licenseId') || allowedIds[0];
@@ -70,7 +106,9 @@ export async function GET(req: NextRequest) {
       migration_required: true,
       hint: 'Apply migrations 004 and 006 for onboarding fields',
       error: error.message,
-      can_edit: canManageLicenseTeam(memberships, licenseId)
+      can_edit: canManageLicenseTeam(memberships, licenseId),
+      can_create: canCreate,
+      licenses: licenseOptionsFromMemberships(memberships)
     });
   }
 
@@ -83,12 +121,167 @@ export async function GET(req: NextRequest) {
     complete:
       onboardingComplete(checklist) || Boolean(licenseRow.onboarding_completed_at),
     can_edit: canManageLicenseTeam(memberships, licenseId),
-    licenses: memberships.map((m) => ({
-      id: m.license_id,
-      license_number: m.licenses?.license_number,
-      entity_name: m.licenses?.entity_name
-    }))
+    can_create: canCreate,
+    licenses: licenseOptionsFromMemberships(memberships)
   });
+}
+
+/**
+ * Create a new CSLB company/license and auto-attach the creator as RMO.
+ * Same path powers "Add company" for multi-firm portfolios.
+ */
+export async function POST(req: NextRequest) {
+  const live = await requireRmo();
+  if (!live) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const memberships = await loadMemberships(live.userId);
+  if (!canCreateCompanies(memberships)) {
+    return NextResponse.json(
+      { error: 'Only RMO or ADMIN can create companies' },
+      { status: 403 }
+    );
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const licenseNumber = normalizeLicenseNumber(body.license_number || body.licenseNumber);
+  const entityName = String(body.entity_name || body.entityName || '').trim();
+
+  if (!isValidLicenseNumber(licenseNumber)) {
+    return NextResponse.json(
+      { error: 'license_number must be 4–12 digits (CSLB license #)' },
+      { status: 400 }
+    );
+  }
+  if (!entityName) {
+    return NextResponse.json({ error: 'entity_name is required' }, { status: 400 });
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  const { data: existing } = await supabase
+    .from('licenses')
+    .select('id, license_number')
+    .eq('license_number', licenseNumber)
+    .maybeSingle();
+
+  if (existing) {
+    const alreadyMember = membershipLicenseIds(memberships).includes(existing.id);
+    return NextResponse.json(
+      {
+        error: alreadyMember
+          ? 'You already manage this license number'
+          : 'A company with this license number already exists',
+        license_id: alreadyMember ? existing.id : undefined
+      },
+      { status: 409 }
+    );
+  }
+
+  const insertRow: Record<string, unknown> = {
+    license_number: licenseNumber,
+    entity_name: entityName,
+    rmo_name: String(body.rmo_name || body.rmoName || live.name || '').trim() || null,
+    classification: String(body.classification || '').trim() || null,
+    business_address: String(body.business_address || body.businessAddress || '').trim() || null,
+    workers_comp_status: String(body.workers_comp_status || body.workersCompStatus || '').trim() || null,
+    onboarding_step: 'company',
+    onboarding_completed_at: null
+  };
+
+  if (body.license_expire_date || body.licenseExpireDate) {
+    insertRow.license_expire_date = body.license_expire_date || body.licenseExpireDate;
+  }
+
+  const { data: license, error: insertErr } = await supabase
+    .from('licenses')
+    .insert([insertRow])
+    .select(LICENSE_SELECT)
+    .single();
+
+  if (insertErr || !license) {
+    const msg = insertErr?.message || 'Failed to create license';
+    const isDup = /unique|duplicate/i.test(msg);
+    return NextResponse.json(
+      {
+        error: isDup ? 'A company with this license number already exists' : msg,
+        hint: isDup
+          ? 'Apply supabase/migrations/007_license_number_unique.sql if not yet applied'
+          : undefined
+      },
+      { status: isDup ? 409 : 500 }
+    );
+  }
+
+  const licenseId = String((license as unknown as { id: string }).id);
+
+  const { error: membershipErr } = await supabase.from('user_licenses').upsert(
+    [{ user_id: live.userId, license_id: licenseId, role: 'RMO' }],
+    { onConflict: 'user_id,license_id,role' }
+  );
+
+  if (membershipErr) {
+    // Roll back orphan license so create is atomic from the caller's POV
+    await supabase.from('licenses').delete().eq('id', licenseId);
+    return NextResponse.json(
+      { error: membershipErr.message || 'Failed to attach RMO membership' },
+      { status: 500 }
+    );
+  }
+
+  // Keep firm portfolio in sync with RMO membership (same as migration 004 backfill)
+  const { data: existingAssoc } = await supabase
+    .from('qualifier_firm_associations')
+    .select('id')
+    .eq('user_id', live.userId)
+    .eq('license_id', licenseId)
+    .eq('status', 'ACTIVE')
+    .maybeSingle();
+
+  if (!existingAssoc) {
+    await supabase.from('qualifier_firm_associations').insert([
+      {
+        user_id: live.userId,
+        license_id: licenseId,
+        eligibility_basis: 'PRIMARY',
+        status: 'ACTIVE'
+      }
+    ]);
+  }
+
+  const updatedMemberships = await loadMemberships(live.userId);
+  const refreshed = {
+    ...live,
+    licenseIds: membershipLicenseIds(updatedMemberships),
+    role: (rolesForUser(updatedMemberships, live.role)[0] || live.role) as typeof live.role
+  };
+  const token = createSessionToken(refreshed);
+
+  const licenseRow = license as unknown as Record<string, unknown>;
+  const checklist = onboardingChecklist(
+    licenseRow as Parameters<typeof onboardingChecklist>[0]
+  );
+
+  const res = NextResponse.json({
+    ok: true,
+    created: true,
+    license_id: licenseId,
+    license: licenseRow,
+    checklist,
+    complete: false,
+    can_edit: true,
+    can_create: true,
+    licenses: licenseOptionsFromMemberships(updatedMemberships)
+  });
+
+  res.cookies.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 14
+  });
+
+  return res;
 }
 
 export async function PUT(req: NextRequest) {
@@ -114,6 +307,8 @@ export async function PUT(req: NextRequest) {
     'rmo_name',
     'business_address',
     'classification',
+    'workers_comp_status',
+    'license_expire_date',
     'ownership_pct',
     'is_subsidiary',
     'is_joint_venture',

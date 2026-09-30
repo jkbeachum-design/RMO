@@ -15,6 +15,7 @@
 - Account roles on `users.role` and per-company roles on `user_licenses.role`: `RMO`, `OPERATOR`, `ADMIN`, `PM`, `FOREMAN`.
 - UI modes: **RMO dashboard** vs **Operator PWA**. Mode switch is only shown when the user has both RMO-class (`RMO`/`ADMIN`) and operator-class (`OPERATOR`/`PM`/`FOREMAN`) memberships.
 - Users only see licenses listed in `user_licenses`.
+- **Create / add companies**: RMO/ADMIN (RMO mode) may `POST /api/onboarding` to insert a new `licenses` row and auto-create an RMO `user_licenses` membership for themselves. Operators cannot create companies or open the RMO dashboard create UI. See [ROLES.md](./ROLES.md).
 - Team matrix + onboarding: see [ROLES.md](./ROLES.md).
 
 ## Env vars
