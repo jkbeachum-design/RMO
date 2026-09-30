@@ -19,6 +19,7 @@ Compliance automation for California RMOs: Retell voice check-ins → Claude ext
 | `docs/RULES.md` | Configurable rules + digests |
 | `docs/ROLES.md` | Roles matrix + company onboarding |
 | `docs/RETELL.md` | Retell webhook + publish deprecation notes |
+| `docs/OFFLINE_PWA.md` | Operator install + airplane-mode dogfood |
 | `vercel.json` | Backend Vercel config |
 
 ## Backend
@@ -43,7 +44,7 @@ npm run dev            # http://localhost:3000
 
 **Auth:** HMAC-signed session cookies + `user_licenses` company isolation. See [docs/AUTH.md](docs/AUTH.md).
 
-**Operator intake:** Voice dial-in or structured PWA form (`/operator/submit-report`) with multi-project fields, per-sub COI uploads, and membership-scoped history edits.
+**Operator intake:** Voice dial-in or structured PWA form (`/operator/submit-report`) with multi-project fields, per-sub COI uploads, membership-scoped history edits, and offline draft queue (see [docs/OFFLINE_PWA.md](docs/OFFLINE_PWA.md)).
 
 **Operator dial-in:** +1 (916) 848-5224
 

@@ -1,8 +1,20 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
+import {
+  enqueueReport,
+  flushAllQueuedReports,
+  friendlyNetworkMessage,
+  isNetworkError,
+  loadLicensesCache,
+  loadOperatorContextCache,
+  saveLicensesCache,
+  saveOperatorContextCache,
+  type CachedLicense
+} from '@/lib/offlineQueue';
+import { useOnlineStatus } from '@/lib/useOnlineStatus';
 
 type ProjectDraft = {
   id?: string;
@@ -76,7 +88,11 @@ function CoiStatusBadge({ sub }: { sub: SubDraft }) {
       }`}
       title={detail}
     >
-      <span className="mt-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: ok ? '#059669' : '#b91c1c' }} aria-hidden />
+      <span
+        className="mt-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ background: ok ? '#059669' : '#b91c1c' }}
+        aria-hidden
+      />
       <div>
         <p className="font-semibold">{ok ? 'COI current' : 'COI missing or expired'}</p>
         <p className="text-xs opacity-90">{detail}</p>
@@ -85,30 +101,95 @@ function CoiStatusBadge({ sub }: { sub: SubDraft }) {
   );
 }
 
-function FileList({ files, onClear }: { files: File[]; onClear: () => void }) {
+function FileList({
+  files,
+  label,
+  onRemove,
+  onClear
+}: {
+  files: File[];
+  label: string;
+  onRemove: (index: number) => void;
+  onClear: () => void;
+}) {
   if (!files.length) return null;
   return (
-    <ul className="mt-2 space-y-1 text-sm text-slate-700">
-      {files.map((f) => (
-        <li key={`${f.name}-${f.size}`} className="flex items-center justify-between gap-2">
-          <span className="truncate">
-            ✓ {f.name} ({(f.size / (1024 * 1024)).toFixed(1)} MB)
-          </span>
-        </li>
-      ))}
-      <li>
-        <button type="button" onClick={onClear} className="text-xs text-red-700 hover:underline">
-          Clear files
-        </button>
-      </li>
-    </ul>
+    <div className="mt-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {label} · {files.length} file{files.length === 1 ? '' : 's'}
+      </p>
+      <ul className="mt-1 space-y-1 text-sm text-slate-700">
+        {files.map((f, idx) => (
+          <li key={`${f.name}-${f.size}-${idx}`} className="flex items-center justify-between gap-2">
+            <span className="truncate">
+              {f.name}{' '}
+              <span className="text-xs text-slate-500">({(f.size / (1024 * 1024)).toFixed(1)} MB)</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onRemove(idx)}
+              className="shrink-0 text-xs text-red-700 hover:underline"
+            >
+              remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={onClear} className="mt-1 text-xs text-red-700 hover:underline">
+        Clear all {label.toLowerCase()}
+      </button>
+    </div>
   );
 }
 
-type LicenseOption = { id: string; license_number: string; entity_name: string };
+type LicenseOption = CachedLicense;
+
+function buildPayload(args: {
+  operatorName: string;
+  licenseId: string;
+  projects: ProjectDraft[];
+  subcontractors: SubDraft[];
+  hasEmployees: boolean;
+  crewExplanation: string;
+  notes: string;
+}) {
+  const namedSubs = args.subcontractors.filter((s) => s.company.trim());
+  return {
+    namedSubs,
+    projectsJson: args.projects.map((p) => {
+      const closeOut = p.closeOut || Boolean(p.endDate);
+      return {
+        address: p.address,
+        contractValue: p.contractValue,
+        trades: p.trades
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+        permitNumber: p.permitNumber,
+        startDate: p.startDate || null,
+        endDate: p.endDate || (closeOut ? todayISO() : null),
+        closed: closeOut,
+        status: (closeOut ? 'COMPLETED' : 'ACTIVE') as 'ACTIVE' | 'COMPLETED'
+      };
+    }),
+    subsJson: namedSubs.map((s) => ({
+      company: s.company,
+      cslbLicense: s.cslbLicense,
+      trade: s.trade,
+      coiExpiration: s.coiExpiration,
+      coiDocumentUrl: s.coiDocumentUrl || null
+    })),
+    crewStatus: {
+      hasEmployees: args.hasEmployees,
+      explanation: args.crewExplanation
+    },
+    notes: args.notes
+  };
+}
 
 export default function SubmitReportClient({ userName }: { userName: string }) {
   const router = useRouter();
+  const online = useOnlineStatus();
 
   const [operatorName, setOperatorName] = useState(userName);
   const [licenses, setLicenses] = useState<LicenseOption[]>([]);
@@ -121,9 +202,15 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
   const [permits, setPermits] = useState<File[]>([]);
   const [photos, setPhotos] = useState<File[]>([]);
   const [loadingContext, setLoadingContext] = useState(true);
+  const [usingCachedContext, setUsingCachedContext] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  const attachmentSummary = useMemo(() => {
+    const coiCount = subcontractors.filter((s) => s.coiFile).length;
+    return { coiCount, permitCount: permits.length, photoCount: photos.length };
+  }, [subcontractors, permits, photos]);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,20 +218,28 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
     async function bootstrapLicenses() {
       try {
         const res = await fetch('/api/me');
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          if (!cancelled) setError(data.error || 'Could not load memberships');
-          return;
+          throw new Error(data.error || 'Could not load memberships');
         }
         if (cancelled) return;
         const list = (data.licenses || []) as LicenseOption[];
         setLicenses(list);
+        await saveLicensesCache(list).catch(() => {});
         if (!licenseId && list[0]) {
           setLicenseId(list[0].license_number);
         }
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Could not load memberships');
+        const cached = await loadLicensesCache().catch(() => null);
+        if (cancelled) return;
+        if (cached?.length) {
+          setLicenses(cached);
+          if (!licenseId && cached[0]) setLicenseId(cached[0].license_number);
+          setUsingCachedContext(true);
+          setError('');
+          setMessage('Using saved company list while offline.');
+        } else {
+          setError(friendlyNetworkMessage(err));
         }
       }
     }
@@ -170,10 +265,9 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
         const res = await fetch(
           `/api/operator-context?license_number=${encodeURIComponent(licenseId)}`
         );
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          if (!cancelled) setError(data.error || 'Could not load saved projects');
-          return;
+          throw new Error(data.error || 'Could not load saved projects');
         }
         if (cancelled) return;
 
@@ -190,8 +284,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
             }) => ({
               id: p.id,
               address: p.project_address || '',
-              contractValue:
-                p.contract_value != null ? String(p.contract_value) : '',
+              contractValue: p.contract_value != null ? String(p.contract_value) : '',
               trades: (p.trades_involved || []).join(', '),
               permitNumber: p.permit_number || '',
               startDate: p.start_date || '',
@@ -222,9 +315,35 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
 
         setProjects(mappedProjects.length ? mappedProjects : [emptyProject()]);
         setSubcontractors(mappedSubs.length ? mappedSubs : [emptySub()]);
+        setUsingCachedContext(false);
+        await saveOperatorContextCache({
+          licenseId,
+          savedAt: new Date().toISOString(),
+          projects: mappedProjects.length ? mappedProjects : [emptyProject()],
+          subcontractors: (mappedSubs.length ? mappedSubs : [emptySub()]).map((s) => ({
+            id: s.id,
+            company: s.company,
+            cslbLicense: s.cslbLicense,
+            trade: s.trade,
+            coiExpiration: s.coiExpiration,
+            coiDocumentUrl: s.coiDocumentUrl
+          }))
+        }).catch(() => {});
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Could not load saved projects');
+        const cached = await loadOperatorContextCache(licenseId).catch(() => null);
+        if (cancelled) return;
+        if (cached) {
+          setProjects(cached.projects.length ? cached.projects : [emptyProject()]);
+          setSubcontractors(
+            cached.subcontractors.length
+              ? cached.subcontractors.map((s) => ({ ...s, coiFile: null }))
+              : [emptySub()]
+          );
+          setUsingCachedContext(true);
+          setError('');
+          setMessage('Using last saved projects & subcontractors while offline.');
+        } else {
+          setError(friendlyNetworkMessage(err));
         }
       } finally {
         if (!cancelled) setLoadingContext(false);
@@ -236,6 +355,19 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
       cancelled = true;
     };
   }, [licenseId]);
+
+  useEffect(() => {
+    if (!online) return;
+    flushAllQueuedReports()
+      .then((result) => {
+        if (result.sent) {
+          setMessage(
+            `Sent ${result.sent} saved offline report${result.sent === 1 ? '' : 's'}.`
+          );
+        }
+      })
+      .catch(() => {});
+  }, [online]);
 
   function validateSingleFile(file: File | null, maxMb = 5): File | null {
     if (!file) return null;
@@ -269,60 +401,89 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
     setSubcontractors((subs) => subs.map((s) => ({ ...s, coiFile: null })));
   }
 
+  async function queueLocally(reason: 'offline' | 'network') {
+    const payload = buildPayload({
+      operatorName,
+      licenseId,
+      projects,
+      subcontractors,
+      hasEmployees,
+      crewExplanation,
+      notes
+    });
+
+    const queued = await enqueueReport({
+      operatorName,
+      licenseId,
+      projects: payload.projectsJson,
+      subcontractors: payload.subsJson,
+      crewStatus: payload.crewStatus,
+      notes: payload.notes,
+      coiFiles: payload.namedSubs
+        .map((s, index) => (s.coiFile ? { index, file: s.coiFile } : null))
+        .filter(Boolean) as Array<{ index: number; file: File }>,
+      permits,
+      photos
+    });
+
+    const fileNote = queued.needsFileReattach
+      ? ` Some files could not be stored locally (${queued.skippedFileNames.join(
+          ', '
+        )}) — re-attach them when online before sending.`
+      : queued.files.length
+        ? ` ${queued.files.length} attachment(s) kept on this phone.`
+        : '';
+
+    setNotes('');
+    setPermits([]);
+    setPhotos([]);
+    setHasEmployees(false);
+    setCrewExplanation('');
+    setSubcontractors((subs) => subs.map((s) => ({ ...s, coiFile: null })));
+    setError('');
+    setMessage(
+      reason === 'offline'
+        ? `Saved offline — will send when you're back online.${fileNote}`
+        : `Couldn't reach the server. Report saved on this phone and will retry when online.${fileNote}`
+    );
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setMessage('');
     setError('');
 
-    const namedSubs = subcontractors.filter((s) => s.company.trim());
+    const payload = buildPayload({
+      operatorName,
+      licenseId,
+      projects,
+      subcontractors,
+      hasEmployees,
+      crewExplanation,
+      notes
+    });
+
+    if (!online) {
+      try {
+        await queueLocally('offline');
+      } catch (err) {
+        setError(friendlyNetworkMessage(err));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
 
     const formData = new FormData();
     formData.append('operatorName', operatorName);
     formData.append('licenseId', licenseId);
-    formData.append(
-      'projects',
-      JSON.stringify(
-        projects.map((p) => {
-          const closeOut = p.closeOut || Boolean(p.endDate);
-          return {
-            address: p.address,
-            contractValue: p.contractValue,
-            trades: p.trades
-              .split(',')
-              .map((t) => t.trim())
-              .filter(Boolean),
-            permitNumber: p.permitNumber,
-            startDate: p.startDate || null,
-            endDate: p.endDate || (closeOut ? todayISO() : null),
-            closed: closeOut,
-            status: closeOut ? 'COMPLETED' : 'ACTIVE'
-          };
-        })
-      )
-    );
-    formData.append(
-      'subcontractors',
-      JSON.stringify(
-        namedSubs.map((s) => ({
-          company: s.company,
-          cslbLicense: s.cslbLicense,
-          trade: s.trade,
-          coiExpiration: s.coiExpiration,
-          coiDocumentUrl: s.coiDocumentUrl || null
-        }))
-      )
-    );
-    formData.append(
-      'crewStatus',
-      JSON.stringify({
-        hasEmployees,
-        explanation: crewExplanation
-      })
-    );
-    formData.append('notes', notes);
+    formData.append('projects', JSON.stringify(payload.projectsJson));
+    formData.append('subcontractors', JSON.stringify(payload.subsJson));
+    formData.append('crewStatus', JSON.stringify(payload.crewStatus));
+    formData.append('notes', payload.notes);
 
-    namedSubs.forEach((s, idx) => {
+    payload.namedSubs.forEach((s, idx) => {
       if (s.coiFile) formData.append(`coi_${idx}`, s.coiFile);
     });
     permits.forEach((f) => formData.append('permits', f));
@@ -349,7 +510,15 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
       );
       setTimeout(() => router.push('/operator/history'), 1400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Submit failed');
+      if (isNetworkError(err)) {
+        try {
+          await queueLocally('network');
+        } catch (queueErr) {
+          setError(friendlyNetworkMessage(queueErr));
+        }
+      } else {
+        setError(friendlyNetworkMessage(err));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -363,6 +532,11 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
           Active projects and subcontractors load from your license each time. Each sub needs its
           own current COI on file.
         </p>
+        {usingCachedContext ? (
+          <p className="mt-2 text-xs text-amber-800">
+            Showing last saved project/sub list from this phone (offline or unreachable).
+          </p>
+        ) : null}
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-8">
           <section className="border-l-4 border-teal-700 bg-white p-5 pl-4 shadow-sm">
@@ -511,9 +685,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                         next[idx] = {
                           ...next[idx],
                           closeOut,
-                          endDate: closeOut
-                            ? next[idx].endDate || todayISO()
-                            : next[idx].endDate
+                          endDate: closeOut ? next[idx].endDate || todayISO() : next[idx].endDate
                         };
                         setProjects(next);
                       }}
@@ -551,7 +723,8 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
               </button>
             </div>
             <p className="mb-3 text-xs text-slate-500">
-              Upload each sub&apos;s COI here. Green = current COI on file and not expired.
+              Upload each sub&apos;s COI here. Green = current COI on file and not expired. Offline
+              COI picks are stored on this phone when possible.
             </p>
             {subcontractors.map((sub, idx) => (
               <div key={sub.id || idx} className="mb-4 border border-slate-200 p-4 last:mb-0">
@@ -613,7 +786,8 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                   </label>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Certificate of Insurance (PDF/JPG)
+                      Certificate of Insurance (PDF/JPG) — Sub {idx + 1}
+                      {sub.company ? ` · ${sub.company}` : ''}
                     </label>
                     <input
                       type="file"
@@ -625,10 +799,12 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                         setSubcontractors(next);
                       }}
                     />
-                    <p className="mt-1 text-xs text-slate-500">Max 5MB · tied to this subcontractor</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Max 5MB · tied only to this subcontractor (not shared across subs)
+                    </p>
                     {sub.coiFile ? (
                       <p className="mt-1 text-sm text-slate-700">
-                        ✓ New upload: {sub.coiFile.name}
+                        New upload ready for Sub {idx + 1}: {sub.coiFile.name}
                         <button
                           type="button"
                           className="ml-2 text-xs text-red-700 hover:underline"
@@ -644,7 +820,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                     ) : null}
                     {!sub.coiFile && sub.coiDocumentUrl ? (
                       <p className="mt-1 text-sm text-slate-700">
-                        ✓ On file:{' '}
+                        On file:{' '}
                         <a
                           href={sub.coiDocumentUrl}
                           target="_blank"
@@ -701,6 +877,12 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
 
           <section className="border-l-4 border-slate-500 bg-white p-5 pl-4 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold">Document uploads (optional)</h2>
+            <p className="mb-3 text-xs text-slate-500">
+              Multi-file OK. Summary:{' '}
+              {attachmentSummary.coiCount} COI · {attachmentSummary.permitCount} permit
+              {attachmentSummary.permitCount === 1 ? '' : 's'} · {attachmentSummary.photoCount}{' '}
+              photo{attachmentSummary.photoCount === 1 ? '' : 's'}
+            </p>
             <div className="space-y-4 text-sm">
               <div>
                 <label className="mb-1 block font-medium text-slate-700">Building permits</label>
@@ -710,7 +892,12 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={(e) => setPermits(validateFiles(e.target.files))}
                 />
-                <FileList files={permits} onClear={() => setPermits([])} />
+                <FileList
+                  files={permits}
+                  label="Permits"
+                  onRemove={(index) => setPermits(permits.filter((_, i) => i !== index))}
+                  onClear={() => setPermits([])}
+                />
               </div>
               <div>
                 <label className="mb-1 block font-medium text-slate-700">Project photos</label>
@@ -720,7 +907,12 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                   accept=".jpg,.jpeg,.png"
                   onChange={(e) => setPhotos(validateFiles(e.target.files))}
                 />
-                <FileList files={photos} onClear={() => setPhotos([])} />
+                <FileList
+                  files={photos}
+                  label="Photos"
+                  onRemove={(index) => setPhotos(photos.filter((_, i) => i !== index))}
+                  onClear={() => setPhotos([])}
+                />
               </div>
             </div>
           </section>
@@ -742,7 +934,13 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
               disabled={submitting || loadingContext}
               className="rounded bg-[#0f2a2a] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#163838] disabled:opacity-50"
             >
-              {submitting ? 'Submitting…' : 'Submit report'}
+              {submitting
+                ? online
+                  ? 'Submitting…'
+                  : 'Saving offline…'
+                : online
+                  ? 'Submit report'
+                  : 'Save offline'}
             </button>
             <button
               type="button"

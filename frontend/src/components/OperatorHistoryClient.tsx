@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { RiskFlagList } from '@/components/RiskFlagBadge';
+import { friendlyNetworkMessage } from '@/lib/offlineQueue';
 import type { ComplianceLog, ExtractedData } from '@/lib/types';
 
 type EditDraft = {
@@ -160,7 +161,7 @@ export default function OperatorHistoryClient({
       setDraft(null);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed');
+      setError(friendlyNetworkMessage(err));
     } finally {
       setSaving(false);
     }
