@@ -6,14 +6,17 @@ import {
   SESSION_COOKIE
 } from './constants';
 import {
-  canUseMode,
   loadMemberships,
-  membershipLicenseIds,
-  rolesForUser
+  membershipLicenseIds
 } from './access';
-import { hashPassword, verifyPassword } from './password';
+import { buildSessionUser } from './authSession';
+import { verifyPassword } from './password';
 import { parseSessionToken } from './session';
 import { getSupabaseAdmin } from './supabase';
+import {
+  ensureSupabaseAuthUser,
+  signInWithSupabasePassword
+} from './supabaseAuth';
 import type { AppMode, SessionUser, UserRole } from './types';
 
 export {
@@ -27,8 +30,14 @@ export {
 
 export { createSessionToken, parseSessionToken } from './session';
 
-export function getPilotPassword(): string {
-  return process.env.PILOT_PASSWORD || 'rmo-pilot';
+/**
+ * @deprecated PILOT_PASSWORD is no longer used for login.
+ * Kept as a no-op export so accidental imports fail loudly in tests if reintroduced.
+ */
+export function getPilotPassword(): never {
+  throw new Error(
+    'PILOT_PASSWORD bootstrap is deprecated. Use Supabase Auth (see docs/AUTH.md).'
+  );
 }
 
 export function getSession(): SessionUser | null {
@@ -54,6 +63,7 @@ type DbUser = {
   role: string | null;
   license_id: string | null;
   password_hash: string | null;
+  auth_user_id: string | null;
   is_active: boolean | null;
 };
 
@@ -61,32 +71,62 @@ async function findUserByEmail(email: string): Promise<DbUser | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('users')
-    .select('id, user_email, user_name, role, license_id, password_hash, is_active')
+    .select(
+      'id, user_email, user_name, role, license_id, password_hash, auth_user_id, is_active'
+    )
     .ilike('user_email', email)
     .maybeSingle();
 
   if (error) {
-    // password_hash / is_active may not exist until migration — retry lean select
     const { data: lean, error: leanError } = await supabase
       .from('users')
       .select('id, user_email, user_name, role, license_id')
       .ilike('user_email', email)
       .maybeSingle();
     if (leanError || !lean) return null;
-    return { ...lean, password_hash: null, is_active: true };
+    return {
+      ...lean,
+      password_hash: null,
+      auth_user_id: null,
+      is_active: true
+    };
   }
   return data as DbUser | null;
 }
 
+async function findUserByAuthId(authUserId: string): Promise<DbUser | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from('users')
+    .select(
+      'id, user_email, user_name, role, license_id, password_hash, auth_user_id, is_active'
+    )
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data as DbUser;
+}
+
+async function linkAuthUserId(userId: string, authUserId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from('users')
+    .update({ auth_user_id: authUserId, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (error) {
+    console.error('Failed to link auth_user_id:', error.message);
+  }
+}
+
 /**
- * Ensure pilot user + memberships exist for migration from allowlist auth.
+ * Ensure pilot user + memberships exist (Jonathan Beachum).
+ * Does NOT set passwords — Supabase Auth owns credentials.
  * Idempotent. Uses service role (trusted bootstrap only).
  */
 export async function ensurePilotBootstrap(): Promise<DbUser | null> {
   const supabase = getSupabaseAdmin();
   let user = await findUserByEmail(PILOT_EMAIL);
 
-  // Remap legacy jonathan@ seed → jbeachum@ if the corrected email row is missing
   if (!user) {
     const legacy = await findUserByEmail(LEGACY_PILOT_EMAIL);
     if (legacy) {
@@ -105,7 +145,6 @@ export async function ensurePilotBootstrap(): Promise<DbUser | null> {
       .in('license_number', ['836089', '1160775']);
 
     const homeLicense = licenses?.find((l) => l.license_number === '836089') || licenses?.[0];
-    const password_hash = hashPassword(getPilotPassword());
 
     const { data: created, error } = await supabase
       .from('users')
@@ -115,12 +154,13 @@ export async function ensurePilotBootstrap(): Promise<DbUser | null> {
           user_name: PILOT_NAME,
           role: 'RMO',
           license_id: homeLicense?.id || null,
-          password_hash,
           is_active: true,
           phone_number: null
         }
       ])
-      .select('id, user_email, user_name, role, license_id, password_hash, is_active')
+      .select(
+        'id, user_email, user_name, role, license_id, password_hash, auth_user_id, is_active'
+      )
       .single();
 
     if (error || !created) {
@@ -135,20 +175,14 @@ export async function ensurePilotBootstrap(): Promise<DbUser | null> {
           { user_id: user.id, license_id: lic.id, role: 'RMO' },
           { onConflict: 'user_id,license_id,role' }
         );
-        // Pilot also exercises operator flows in demos
         await supabase.from('user_licenses').upsert(
           { user_id: user.id, license_id: lic.id, role: 'OPERATOR' },
           { onConflict: 'user_id,license_id,role' }
         );
       }
     }
-  } else if (!user.password_hash) {
-    const password_hash = hashPassword(getPilotPassword());
-    await supabase.from('users').update({ password_hash }).eq('id', user.id);
-    user = { ...user, password_hash };
   }
 
-  // Ensure memberships for known pilot licenses
   const { data: licenses } = await supabase
     .from('licenses')
     .select('id, license_number')
@@ -170,6 +204,63 @@ export async function ensurePilotBootstrap(): Promise<DbUser | null> {
   return user;
 }
 
+/**
+ * One-time cutover: if the app user still has a legacy scrypt password_hash and
+ * the password matches, create/link a Supabase Auth user with that password.
+ * After this, Auth is the source of truth — PILOT_PASSWORD is not consulted.
+ */
+async function migrateLegacyPasswordToAuth(
+  user: DbUser,
+  password: string
+): Promise<{ authUserId: string } | null> {
+  if (!verifyPassword(password, user.password_hash)) {
+    return null;
+  }
+  try {
+    const { authUserId } = await ensureSupabaseAuthUser({
+      email: user.user_email,
+      password,
+      name: user.user_name || undefined
+    });
+    if (!user.auth_user_id || user.auth_user_id !== authUserId) {
+      await linkAuthUserId(user.id, authUserId);
+    }
+    return { authUserId };
+  } catch (err) {
+    console.error(
+      'Legacy password → Auth migration failed:',
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}
+
+async function resolveAppUserAfterAuth(
+  authUserId: string,
+  email: string
+): Promise<DbUser | { error: string; status: number }> {
+  let user = await findUserByAuthId(authUserId);
+  if (!user) {
+    user = await findUserByEmail(email);
+  }
+  if (!user || user.is_active === false) {
+    return {
+      error:
+        'No RMO Compliance account for this login. Ask your RMO admin to invite you.',
+      status: 403
+    };
+  }
+  if (!user.auth_user_id) {
+    await linkAuthUserId(user.id, authUserId);
+    user = { ...user, auth_user_id: authUserId };
+  } else if (user.auth_user_id !== authUserId) {
+    console.warn(
+      `auth_user_id mismatch for ${email}: stored=${user.auth_user_id} auth=${authUserId}`
+    );
+  }
+  return user;
+}
+
 export async function authenticateUser(
   emailRaw: string,
   password: string,
@@ -180,28 +271,33 @@ export async function authenticateUser(
     return { error: 'Email and password required', status: 400 };
   }
 
-  // Migration: ensure pilot row exists when logging in as pilot
   if (email === PILOT_EMAIL) {
     await ensurePilotBootstrap();
   }
 
-  let user = await findUserByEmail(email);
-  if (!user || user.is_active === false) {
-    return { error: 'Invalid email or password', status: 401 };
+  let authUserId: string | null = null;
+
+  const authResult = await signInWithSupabasePassword(email, password);
+  if ('user' in authResult) {
+    authUserId = authResult.user.id;
+  } else {
+    // Cutover: legacy scrypt hash on users → provision Supabase Auth once
+    const existing = await findUserByEmail(email);
+    if (!existing || existing.is_active === false) {
+      return { error: 'Invalid email or password', status: 401 };
+    }
+    const migrated = await migrateLegacyPasswordToAuth(existing, password);
+    if (!migrated) {
+      return { error: 'Invalid email or password', status: 401 };
+    }
+    authUserId = migrated.authUserId;
   }
 
-  let passwordOk = verifyPassword(password, user.password_hash);
-  // One-time migration path: pilot password from env when hash missing / mismatch during cutover
-  if (!passwordOk && email === PILOT_EMAIL && password === getPilotPassword()) {
-    passwordOk = true;
-    const password_hash = hashPassword(password);
-    await getSupabaseAdmin().from('users').update({ password_hash }).eq('id', user.id);
-    user = { ...user, password_hash };
+  const resolved = await resolveAppUserAfterAuth(authUserId, email);
+  if ('error' in resolved) {
+    return resolved;
   }
-
-  if (!passwordOk) {
-    return { error: 'Invalid email or password', status: 401 };
-  }
+  const user = resolved;
 
   const memberships = await loadMemberships(user.id);
   const licenseIds = membershipLicenseIds(memberships);
@@ -212,23 +308,19 @@ export async function authenticateUser(
     };
   }
 
-  const accountRole = (String(user.role || 'OPERATOR').toUpperCase() as UserRole) || 'OPERATOR';
-  const available = rolesForUser(memberships, accountRole);
-  let mode: AppMode = requestedMode === 'OPERATOR' ? 'OPERATOR' : 'RMO';
-  if (!canUseMode(memberships, mode)) {
-    mode = canUseMode(memberships, 'RMO') ? 'RMO' : 'OPERATOR';
-  }
+  const accountRole =
+    (String(user.role || 'OPERATOR').toUpperCase() as UserRole) || 'OPERATOR';
 
-  const sessionUser: SessionUser = {
-    userId: user.id,
-    email: user.user_email,
-    name: user.user_name || user.user_email,
-    role: (available.includes(accountRole) ? accountRole : available[0]) as UserRole,
-    mode,
-    licenseIds
+  return {
+    user: buildSessionUser({
+      userId: user.id,
+      email: user.user_email,
+      name: user.user_name || user.user_email,
+      accountRole,
+      memberships,
+      requestedMode
+    })
   };
-
-  return { user: sessionUser };
 }
 
 export async function refreshSessionMemberships(session: SessionUser): Promise<SessionUser> {

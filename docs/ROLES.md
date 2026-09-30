@@ -43,7 +43,7 @@ Onboarding fields for ownership/bonds/duty live on `licenses` from migration **0
 | GET/PUT | `/api/onboarding` | RMO mode; edits require RMO/ADMIN on that license |
 | POST | `/api/onboarding` | RMO mode; create requires any RMO/ADMIN membership. Body: `license_number`, `entity_name` (min). Inserts `licenses` + creator `user_licenses` role `RMO`, refreshes session cookie. |
 
-Inviting a new email creates a `users` row with a one-time temporary password (returned once in the API response) and a `company_invites` row when action is `invite`.
+Inviting a new email creates a Supabase Auth user (Admin API) with a one-time temporary password (returned once in the API response), a `users` row with `auth_user_id`, and a `company_invites` row when action is `invite`. See [AUTH.md](./AUTH.md).
 
 Operators cannot create companies (OPERATOR mode → 401 on onboarding; operator-class-only memberships → 403).
 

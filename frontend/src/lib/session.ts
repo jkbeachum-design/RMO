@@ -10,9 +10,7 @@ function getSessionSecret(): string {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('SESSION_SECRET must be set (min 16 chars) in production');
   }
-  return process.env.PILOT_PASSWORD
-    ? `dev-session-${process.env.PILOT_PASSWORD}`
-    : 'dev-only-insecure-session-secret';
+  return 'dev-only-insecure-session-secret';
 }
 
 function b64url(buf: Buffer | string): string {

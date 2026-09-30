@@ -1,22 +1,40 @@
 # Authentication & company isolation
 
-## What changed (priority #1)
+## Current model (Supabase Auth + signed app session)
 
-| Risk (gap analysis) | Fix |
-|---------------------|-----|
-| Unsigned forgeable `rmo_session` cookie | HMAC-SHA256 signed session (`SESSION_SECRET`) |
-| Dashboard used service-role for all reads | Still server-only service role, but **every** path filters by `user_licenses` membership; browser never gets the key |
-| Retell webhook unauthenticated | Shared secret via `Authorization: Bearer` / `x-retell-signature` |
-| Operator history hard-locked to `#836089` | Uses first accessible membership (or `?license=`) |
-| Single-tenant assumptions | Membership table + no default license authorization |
+| Layer | What it does |
+|-------|----------------|
+| **Supabase Auth** | Email/password credentials (`auth.users`). Login verifies here first. |
+| **`public.users` + `user_licenses`** | App identity + company membership / roles. Linked via `users.auth_user_id`. |
+| **Signed `rmo_session` cookie** | HMAC-SHA256 session (`SESSION_SECRET`) with `userId`, mode (RMO vs Operator), and license ids. Dashboard and Operator PWA keep using this cookie — not a browser Supabase JWT. |
 
-## Roles
+### Product locks
 
-- Account roles on `users.role` and per-company roles on `user_licenses.role`: `RMO`, `OPERATOR`, `ADMIN`, `PM`, `FOREMAN`.
-- UI modes: **RMO dashboard** vs **Operator PWA**. Mode switch is only shown when the user has both RMO-class (`RMO`/`ADMIN`) and operator-class (`OPERATOR`/`PM`/`FOREMAN`) memberships.
-- Users only see licenses listed in `user_licenses`.
-- **Create / add companies**: RMO/ADMIN (RMO mode) may `POST /api/onboarding` to insert a new `licenses` row and auto-create an RMO `user_licenses` membership for themselves. Operators cannot create companies or open the RMO dashboard create UI. See [ROLES.md](./ROLES.md).
-- Team matrix + onboarding: see [ROLES.md](./ROLES.md).
+- **RMO / ADMIN** → RMO dashboard (portfolio, companies, invites, settings).
+- **OPERATOR / PM / FOREMAN** → Operator report portal (`/operator`) only unless they also hold RMO-class memberships.
+- Mode switch appears only when the user has both RMO-class and operator-class memberships. See [ROLES.md](./ROLES.md).
+
+## Login flow
+
+1. `POST /api/auth/login` with email + password (+ optional mode).
+2. Server calls Supabase Auth `signInWithPassword` (anon key, ephemeral client — session is not persisted in the browser).
+3. Resolve `public.users` by `auth_user_id`, else by email; link `auth_user_id` if missing.
+4. Load `user_licenses`, pick RMO vs Operator mode, set signed `rmo_session`.
+5. Redirect: Operator mode → `/operator`; RMO mode → `/dashboard`.
+
+### One-time legacy hash migration
+
+If Auth sign-in fails but `users.password_hash` (scrypt) still verifies the password, the server **creates/links** a Supabase Auth user with that password and continues. After that, Auth is authoritative. **`PILOT_PASSWORD` is no longer read for login** (deprecated).
+
+## Invites (operators / team)
+
+`POST /api/roles` with `action: invite` or `add`:
+
+1. Creates a Supabase Auth user (Admin API, email confirmed) with a one-time temporary password.
+2. Inserts/links `public.users.auth_user_id` and `user_licenses`.
+3. Returns `temporary_password` once in the API response (Roles UI shows it). Share out-of-band; Eric invite can use this path later without lifting alert blocks.
+
+Existing app users without `auth_user_id` get Auth provisioned on invite/add.
 
 ## Env vars
 
@@ -25,24 +43,24 @@
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `SUPABASE_URL` | yes | Postgres API |
-| `SUPABASE_KEY` | yes | **service_role** — webhook inserts only; never ship to browser |
+| `SUPABASE_KEY` | yes | **service_role** — webhook inserts + Auth Admin; never ship to browser |
 | `ANTHROPIC_API_KEY` | yes | Claude extraction |
 | `RETELL_WEBHOOK_SECRET` | **yes in production** | Shared secret for Retell + Next.js proxy |
 | `RETELL_API_KEY` | fallback | Accepted as webhook secret if `RETELL_WEBHOOK_SECRET` unset |
 | `ANTHROPIC_MODEL` | no | default `claude-sonnet-4-6` |
 | `PORT` | no | default `3001` |
 
-### Frontend (`frontend/.env.local`)
+### Frontend (`frontend/.env.local` / Vercel)
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Anon/publishable key (future RLS clients) |
-| `SUPABASE_KEY` | yes | Server-only service role for membership-scoped queries |
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL (`https://hiceshmpjvqfptytlyzo.supabase.co`) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Anon/publishable key (Auth password verify + future RLS) |
+| `SUPABASE_KEY` | yes | Server-only service role (membership queries + Auth Admin invites) |
 | `SESSION_SECRET` | **yes in production** (≥16 chars) | HMAC key for signed cookies |
-| `PILOT_PASSWORD` | migration | Bootstrap password for pilot email until hashes set |
 | `BACKEND_URL` or `NEXT_PUBLIC_BACKEND_URL` | yes for manual submit | Express backend base URL |
 | `RETELL_WEBHOOK_SECRET` | yes for manual submit | Forwarded by `/api/operator/submit-report` |
+| `PILOT_PASSWORD` | **deprecated** | Ignored for login. Unset after Auth cutover. |
 
 Generate a strong session secret:
 
@@ -50,22 +68,36 @@ Generate a strong session secret:
 openssl rand -base64 32
 ```
 
-## Database migration
+## Supabase Dashboard (required after merge)
 
-Apply `supabase/migrations/001_auth_company_isolation.sql` in the Supabase SQL editor:
+Project: `hiceshmpjvqfptytlyzo`
 
-1. Adds `password_hash`, `auth_user_id`, `is_active` on `users`
-2. Creates `user_licenses` membership table
-3. Backfills memberships from existing `users.license_id` + pilot RMO email (`jbeachum@buildmyoffice.com`) → Beachum/Vanguard; remaps legacy `jonathan@…` if present. Documents Eric (`ERICJ379@gmail.com`) as ADMIN on Vanguard `#1160775` when that user row exists.
-4. Enables RLS policies for defense-in-depth (service role still bypasses for Retell)
+1. **Authentication → URL Configuration**
+   - **Site URL:** `https://rmo.buildmyoffice.com`
+   - **Redirect URLs allow list:**
+     - `https://rmo.buildmyoffice.com/**`
+     - `http://localhost:3000/**` (local)
+2. **Authentication → Providers → Email:** enabled (password). Confirmations can stay on; invites use Admin `email_confirm: true`.
+3. **Jonathan first-time Auth** (pick one):
+   - **A. Auto-migrate:** Sign in once with the password that still matches his legacy `password_hash` (former pilot password). Server creates Auth + sets `auth_user_id`.
+   - **B. Dashboard:** Authentication → Users → Add user → `jbeachum@buildmyoffice.com` + password → then run link SQL or the bootstrap script.
+   - **C. Script** (service role):
 
-## Pilot migration path
+```bash
+SUPABASE_URL=https://hiceshmpjvqfptytlyzo.supabase.co \
+SUPABASE_KEY=<service_role> \
+BOOTSTRAP_EMAIL=jbeachum@buildmyoffice.com \
+BOOTSTRAP_PASSWORD='<strong-password>' \
+node scripts/bootstrap-supabase-auth.mjs
+```
 
-1. Apply the SQL migration.
-2. Set `SESSION_SECRET`, `RETELL_WEBHOOK_SECRET`, and keep `PILOT_PASSWORD` temporarily.
-3. Sign in once as `jbeachum@buildmyoffice.com` (Jonathan Beachum) with the pilot password — bootstrap writes `password_hash` and dual RMO/OPERATOR memberships for both pilot licenses (Beachum `#836089` + Vanguard `#1160775`).
-4. Create additional users in `users` + `user_licenses` (or a future invite flow). Set `password_hash` via a small script using the same `scrypt$…` format as `frontend/src/lib/password.ts`. For Vanguard, seed Eric (`ERICJ379@gmail.com`) as `ADMIN` on `#1160775` (company principal); Jonathan remains `RMO` on both licenses.
-5. Optional later: set `users.auth_user_id` and switch login to Supabase Auth; RLS helpers already key off `auth.uid()` / JWT email.
+4. **Vercel:** Confirm `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `SESSION_SECRET`. **Unset `PILOT_PASSWORD`.**
+
+## Database
+
+Apply migrations through `001` … `007` as before. `008_supabase_auth_cutover.sql` is a no-op marker documenting the Auth cutover (no new public tables / GRANTs).
+
+`users.auth_user_id` and RLS helpers (`current_app_user_id`) were introduced in `001_auth_company_isolation.sql`.
 
 ## Retell configuration
 
@@ -78,12 +110,12 @@ Manual operator submits go through `POST /api/operator/submit-report` (session +
 
 ## Manual verification
 
-1. **Forged cookie**: Set `rmo_session` to base64 JSON of `{email,mode}` → should fail (401 / redirect to login).
-2. **Login**: Valid user with membership → dashboard only lists their licenses.
-3. **Cross-company**: Request `/dashboard?license=<other_company>` or `/api/logs?license_number=…` for a license not in membership → 403 / denied.
-4. **Operator history**: No longer assumes `#836089`; shows membership company.
-5. **Webhook**: `POST /api/webhooks/retell` without secret → `401` in production.
-6. **Mode switch**: Operator-only account should not see “Switch to RMO”.
+1. **Forged cookie:** Set `rmo_session` to base64 JSON of `{email,mode}` → fail (401 / redirect to login).
+2. **Auth login:** Valid Supabase Auth user linked to `users` + memberships → dashboard lists only their licenses.
+3. **Operator-only:** Operator-class memberships → land on `/operator`; no RMO create UI.
+4. **Cross-company:** Request another license → 403 / denied.
+5. **Invite:** Roles → invite OPERATOR → temporary password shown once → that user signs in without `PILOT_PASSWORD`.
+6. **Webhook:** `POST /api/webhooks/retell` without secret → `401` in production.
 
 ## Automated tests
 
@@ -91,4 +123,4 @@ Manual operator submits go through `POST /api/operator/submit-report` (session +
 npm test
 ```
 
-Covers signed vs forged cookies, password hash verify, membership helper, webhook secret acceptance.
+Covers signed vs forged cookies, password hash verify (legacy cutover), Auth session helpers (mode/role), membership helper, webhook secret acceptance.

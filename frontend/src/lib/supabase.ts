@@ -35,7 +35,7 @@ export function getSupabaseAdmin(): SupabaseClient {
   return adminClient;
 }
 
-/** Browser / anon client (no service role). For future Supabase Auth session use. */
+/** Browser / anon client (no service role). Used for ephemeral Auth password verify. */
 export function getSupabaseAnon(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const anon =

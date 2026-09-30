@@ -1,0 +1,21 @@
+-- RMO Compliance — Supabase Auth cutover notes (no schema changes required)
+--
+-- Auth credentials live in auth.users. App authorization stays on public.users
+-- + public.user_licenses, linked by public.users.auth_user_id.
+--
+-- Ops after deploy:
+-- 1. Supabase Dashboard → Authentication → URL Configuration
+--      Site URL: https://rmo.buildmyoffice.com
+--      Redirect allow list:
+--        https://rmo.buildmyoffice.com/**
+--        http://localhost:3000/**
+-- 2. Create / set password for jbeachum@buildmyoffice.com (Dashboard Users,
+--    or scripts/bootstrap-supabase-auth.mjs). First login with a legacy
+--    password_hash also auto-provisions Auth and sets auth_user_id.
+-- 3. Unset PILOT_PASSWORD on Vercel (deprecated; no longer read for login).
+--
+-- No new public tables in this cutover — Data API GRANTs unchanged.
+-- (If you add public tables later, GRANT SELECT to anon; GRANT SELECT,
+--  INSERT, UPDATE, DELETE to authenticated and service_role.)
+
+SELECT 1;

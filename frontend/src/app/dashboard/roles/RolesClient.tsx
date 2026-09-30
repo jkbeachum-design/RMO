@@ -93,8 +93,8 @@ export default function RolesClient({ userName }: { userName: string }) {
       setName('');
       setMessage(
         data.temporary_password
-          ? `Member added. Temporary password: ${data.temporary_password}`
-          : 'Member added / invited.'
+          ? `Member added. Temporary Supabase Auth password (share once): ${data.temporary_password}`
+          : 'Member added / invited (they already have Auth credentials).'
       );
       await load(licenseId);
     } catch (err) {
