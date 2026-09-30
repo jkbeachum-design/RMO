@@ -83,6 +83,14 @@ export function canManageLicenseTeam(memberships: Membership[], licenseId: strin
   return roles.includes('RMO') || roles.includes('ADMIN');
 }
 
+/**
+ * True if the user has RMO or ADMIN on any company — required to create
+ * additional CSLB licenses for their portfolio.
+ */
+export function canCreateCompanies(memberships: Membership[]): boolean {
+  return memberships.some((m) => m.role === 'RMO' || m.role === 'ADMIN');
+}
+
 /** True if the session user may access this license UUID. */
 export function sessionHasLicenseId(session: SessionUser, licenseId: string): boolean {
   return (session.licenseIds || []).includes(licenseId);

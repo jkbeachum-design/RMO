@@ -7,6 +7,7 @@
 | Roles beyond RMO/OPERATOR | Matrix for `RMO`, `ADMIN`, `PM`, `FOREMAN`, `OPERATOR` |
 | Team management | RMO/ADMIN can invite/add/update/remove `user_licenses` rows |
 | Company onboarding | Wizard for association docs, ownership, duty statement, bonds/BQI |
+| Create / add companies | RMO/ADMIN can INSERT a new `licenses` row + auto RMO `user_licenses` membership |
 | Audit export | Uses stored `licenses.duty_statement` when present |
 
 ## Role → UI mode
@@ -28,6 +29,10 @@ Apply `supabase/migrations/006_roles_onboarding.sql` (after 004):
 - `licenses.onboarding_completed_at`, `licenses.onboarding_step`
 - `company_invites` + RLS
 
+Apply `supabase/migrations/007_license_number_unique.sql` for create-company uniqueness:
+
+- Unique index on `licenses.license_number`
+
 Onboarding fields for ownership/bonds/duty live on `licenses` from migration **004**.
 
 ## APIs (membership-scoped)
@@ -36,13 +41,16 @@ Onboarding fields for ownership/bonds/duty live on `licenses` from migration **0
 |--------|------|------|
 | GET/POST | `/api/roles` | RMO mode; mutations require RMO/ADMIN on that license |
 | GET/PUT | `/api/onboarding` | RMO mode; edits require RMO/ADMIN on that license |
+| POST | `/api/onboarding` | RMO mode; create requires any RMO/ADMIN membership. Body: `license_number`, `entity_name` (min). Inserts `licenses` + creator `user_licenses` role `RMO`, refreshes session cookie. |
 
 Inviting a new email creates a `users` row with a one-time temporary password (returned once in the API response) and a `company_invites` row when action is `invite`.
 
+Operators cannot create companies (OPERATOR mode → 401 on onboarding; operator-class-only memberships → 403).
+
 ## UI
 
-- **Roles** → `/dashboard/roles` — matrix + team roster
-- **Onboarding** → `/dashboard/onboarding` — stepped company wizard
+- **Roles** → `/dashboard/roles` — matrix + team roster; link to **Add company**
+- **Onboarding** → `/dashboard/onboarding` — portfolio company switcher, **Add company**, stepped edit wizard
 
 ## Pilot roster note
 
@@ -51,9 +59,11 @@ Inviting a new email creates a `users` row with a one-time temporary password (r
 
 ## Verify
 
-1. Apply migrations 004 + 006.
+1. Apply migrations 004 + 006 + 007.
 2. Sign in as RMO → open **Roles** → confirm matrix shows ADMIN/PM/FOREMAN/OPERATOR.
 3. Invite an OPERATOR email on a membership company → row appears; other companies remain invisible.
-4. Open **Onboarding**, fill ownership / duty (≥40 chars) / bond / docs URL → **Mark complete**.
-5. Audit export should prefer the saved duty statement.
-6. `npm test` — roles unit tests pass.
+4. Open **Onboarding** → **Add company** with a new CSLB # + entity name → company appears in switcher; continue wizard.
+5. Edit an existing managed company (Beachum / Vanguard) via the switcher → PUT saves.
+6. Operator session cannot hit create (`POST /api/onboarding` → 401/403).
+7. Audit export should prefer the saved duty statement.
+8. `npm test` — roles unit tests pass.

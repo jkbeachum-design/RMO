@@ -106,12 +106,33 @@ export function canManageTeam(roles: UserRole[]): boolean {
   return roles.some((r) => r === 'RMO' || r === 'ADMIN');
 }
 
+/**
+ * True when the account holds any RMO/ADMIN membership and may create additional
+ * CSLB companies (greenfield create + multi-company portfolio add).
+ * Operator-class-only accounts cannot create companies.
+ */
+export function canCreateCompany(roles: UserRole[]): boolean {
+  return roles.some((r) => r === 'RMO' || r === 'ADMIN');
+}
+
 export function isRmoClassRole(role: UserRole): boolean {
   return role === 'RMO' || role === 'ADMIN';
 }
 
 export function isOperatorClassRole(role: UserRole): boolean {
   return role === 'OPERATOR' || role === 'FOREMAN' || role === 'PM';
+}
+
+/** Normalize a CSLB license number for insert / uniqueness checks. */
+export function normalizeLicenseNumber(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, '');
+}
+
+/** Basic CSLB license number shape: digits only, reasonable length. */
+export function isValidLicenseNumber(value: string): boolean {
+  return /^\d{4,12}$/.test(value);
 }
 
 export type OnboardingStepId =

@@ -151,12 +151,20 @@ export default function RolesClient({ userName }: { userName: string }) {
   return (
     <AppShell mode="RMO" name={userName}>
       <div className="space-y-10">
-        <header>
-          <h1 className="font-serif text-3xl text-slate-900">Roles & team</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Beyond RMO/Operator: ADMIN shares the RMO dashboard; PM and Foreman use the Operator
-            PWA. Membership is always company-scoped.
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="font-serif text-3xl text-slate-900">Roles & team</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              Beyond RMO/Operator: ADMIN shares the RMO dashboard; PM and Foreman use the Operator
+              PWA. Membership is always company-scoped. Add another CSLB company from Onboarding.
+            </p>
+          </div>
+          <a
+            href="/dashboard/onboarding"
+            className="rounded border border-slate-300 bg-white px-4 py-2 text-sm text-slate-800 hover:bg-slate-50"
+          >
+            Add company
+          </a>
         </header>
 
         {error ? (
