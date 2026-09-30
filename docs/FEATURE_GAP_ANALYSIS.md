@@ -28,7 +28,7 @@ Status key:
 | **Storage** | Not used on `main`. WIP branch uploads to Supabase Storage (`compliance-uploads`) |
 | **Auth** | Pilot cookie auth — single allowlisted email + shared password; base64url session cookie `rmo_session`; roles are UI modes `RMO` \| `OPERATOR` (not separate accounts). **Not** Supabase Auth |
 | **PDF / e-sign (pilot)** | Client-side `jspdf` + `html2canvas`; `react-signature-canvas` for monthly audit signature |
-| **PWA** | `frontend/public/manifest.json` + mobile-oriented operator pages; no service worker on `main` |
+| **PWA** | Operator installable app: `manifest.json` + icons + `sw.js` shell cache for `/operator*`; IndexedDB offline report queue. See [OFFLINE_PWA.md](./OFFLINE_PWA.md). Dashboard stays online-first. |
 | **Pilot clients in DB** | Beachum Construction (#836089), Vanguard Property Maintenance (#1160775) |
 
 **Primary data flow (operational today):**
@@ -214,7 +214,7 @@ Defer for later (after #1–10): messaging/tasks, SOP library, e-sign provider, 
 16. **Single 600-line backend file** with extraction prompt, rules, and storage mixed — hard to test; no automated tests in repo.  
 17. **No schema migrations in repo** — table shapes inferred from app code only; drift risk (e.g. `rmo_reviewed_at` / `updated_at` written but absent from `ComplianceLog` type).  
 18. **License numbers hardcoded in Claude prompt** (Beachum/Vanguard inference) — pilot-coupled; will mis-attribute as clients grow.  
-19. **PWA incomplete** — manifest icons point at `/favicon.ico` under `public/` while favicon lives under `src/app/`; no service worker/offline.  
+19. **PWA offline (operator)** — icons, manifest `start_url=/operator`, service worker shell cache, and IndexedDB submit queue are implemented; see [OFFLINE_PWA.md](./OFFLINE_PWA.md). Remaining: Background Sync API / push, richer offline history edits.  
 20. **Unmerged WIP branch** (`cursor/pwa-form-and-operator-edits`) substantially expands intake/storage/edit paths — reconcile before parallel feature work to avoid duplicate designs.
 
 ---

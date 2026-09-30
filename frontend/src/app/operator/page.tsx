@@ -55,6 +55,15 @@ export default function OperatorHomePage() {
             uploads.
           </p>
         </div>
+
+        <div className="mt-4 border border-slate-200 bg-white p-4 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">Install on your phone</p>
+          <p className="mt-1">
+            Use your browser&apos;s <strong>Add to Home Screen</strong> / Install app action while
+            online. After one visit, Operator home, Submit report, and History keep working with
+            weak signal — drafts queue on this phone and send when you&apos;re back online.
+          </p>
+        </div>
       </div>
     </AppShell>
   );
