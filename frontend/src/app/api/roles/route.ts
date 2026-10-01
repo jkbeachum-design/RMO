@@ -7,7 +7,7 @@ import {
   canManageLicenseTeam
 } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { hashPassword } from '@/lib/password';
+import { ensureSupabaseAuthUser } from '@/lib/supabaseAuth';
 import { ALL_ROLES, ROLE_DEFINITIONS } from '@/lib/roles';
 import type { UserRole } from '@/lib/types';
 
@@ -175,13 +175,33 @@ export async function POST(req: NextRequest) {
 
   let { data: user } = await supabase
     .from('users')
-    .select('id, user_email, user_name, password_hash')
+    .select('id, user_email, user_name, auth_user_id')
     .ilike('user_email', email)
     .maybeSingle();
 
   let temporaryPassword: string | null = null;
   if (!user) {
     temporaryPassword = randomBytes(9).toString('base64url').slice(0, 12);
+    let authUserId: string;
+    try {
+      const ensured = await ensureSupabaseAuthUser({
+        email,
+        password: temporaryPassword,
+        name: body.name || email.split('@')[0]
+      });
+      authUserId = ensured.authUserId;
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to create Supabase Auth user for invite'
+        },
+        { status: 500 }
+      );
+    }
+
     const { data: created, error: createErr } = await supabase
       .from('users')
       .insert([
@@ -189,12 +209,12 @@ export async function POST(req: NextRequest) {
           user_email: email,
           user_name: body.name || email.split('@')[0],
           role,
-          password_hash: hashPassword(temporaryPassword),
+          auth_user_id: authUserId,
           is_active: true,
           license_id: licenseId
         }
       ])
-      .select('id, user_email, user_name, password_hash')
+      .select('id, user_email, user_name, auth_user_id')
       .single();
     if (createErr || !created) {
       return NextResponse.json(
@@ -203,6 +223,31 @@ export async function POST(req: NextRequest) {
       );
     }
     user = created;
+  } else if (!user.auth_user_id) {
+    // Existing app row without Auth — provision Auth so they can sign in
+    temporaryPassword = randomBytes(9).toString('base64url').slice(0, 12);
+    try {
+      const ensured = await ensureSupabaseAuthUser({
+        email,
+        password: temporaryPassword,
+        name: body.name || user.user_name || email.split('@')[0]
+      });
+      await supabase
+        .from('users')
+        .update({ auth_user_id: ensured.authUserId })
+        .eq('id', user.id);
+      user = { ...user, auth_user_id: ensured.authUserId };
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : 'Failed to link Supabase Auth user for invite'
+        },
+        { status: 500 }
+      );
+    }
   }
 
   if (action === 'invite') {

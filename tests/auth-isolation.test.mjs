@@ -1,6 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac, timingSafeEqual, randomBytes, scryptSync } from 'node:crypto';
+import {
+  buildSessionUser,
+  canUseModeFromRoles,
+  pickAppMode,
+  rolesFromMemberships
+} from '../frontend/src/lib/authSession.ts';
+import {
+  isAllowedAppOrigin,
+  passwordResetRedirectTo,
+  resolveAppOrigin
+} from '../frontend/src/lib/siteUrl.ts';
+import { validateNewPassword } from '../frontend/src/lib/passwordPolicy.ts';
 
 // Mirror frontend/src/lib/session.ts + password.ts for Node test runner
 // (keeps CI free of a TS transpile step while asserting security properties)
@@ -134,7 +146,7 @@ describe('signed session cookies', () => {
   });
 });
 
-describe('password hashing', () => {
+describe('password hashing (legacy cutover)', () => {
   it('verifies correct password and rejects wrong one', () => {
     const hash = hashPassword('correct-horse');
     assert.ok(verifyPassword('correct-horse', hash));
@@ -147,6 +159,48 @@ describe('company isolation helpers', () => {
     const session = { licenseIds: ['a', 'b'] };
     assert.equal(sessionHasLicenseId(session, 'a'), true);
     assert.equal(sessionHasLicenseId(session, 'c'), false);
+  });
+});
+
+describe('auth session mode routing (post Supabase Auth)', () => {
+  it('routes RMO/ADMIN to dashboard mode and OPERATOR/PM/FOREMAN to operator mode', () => {
+    assert.equal(canUseModeFromRoles(['RMO'], 'RMO'), true);
+    assert.equal(canUseModeFromRoles(['ADMIN'], 'RMO'), true);
+    assert.equal(canUseModeFromRoles(['OPERATOR'], 'RMO'), false);
+    assert.equal(canUseModeFromRoles(['OPERATOR', 'PM'], 'OPERATOR'), true);
+    assert.equal(canUseModeFromRoles(['FOREMAN'], 'OPERATOR'), true);
+  });
+
+  it('picks Operator when requested and memberships allow; falls back for operator-only', () => {
+    const dual = [
+      { license_id: 'a', role: 'RMO' },
+      { license_id: 'a', role: 'OPERATOR' }
+    ];
+    assert.equal(pickAppMode(dual, 'RMO', 'OPERATOR'), 'OPERATOR');
+    assert.equal(pickAppMode(dual, 'RMO', 'RMO'), 'RMO');
+
+    const operatorOnly = [{ license_id: 'a', role: 'OPERATOR' }];
+    assert.equal(pickAppMode(operatorOnly, 'OPERATOR', 'RMO'), 'OPERATOR');
+  });
+
+  it('builds session with membership license ids after Auth success', () => {
+    const memberships = [
+      { license_id: 'lic-beachum', role: 'RMO' },
+      { license_id: 'lic-beachum', role: 'OPERATOR' },
+      { license_id: 'lic-vanguard', role: 'RMO' }
+    ];
+    const session = buildSessionUser({
+      userId: 'u1',
+      email: 'jbeachum@buildmyoffice.com',
+      name: 'Jonathan Beachum',
+      accountRole: 'RMO',
+      memberships,
+      requestedMode: 'RMO'
+    });
+    assert.equal(session.mode, 'RMO');
+    assert.equal(session.role, 'RMO');
+    assert.deepEqual(session.licenseIds.sort(), ['lic-beachum', 'lic-vanguard']);
+    assert.deepEqual(rolesFromMemberships(memberships).sort(), ['OPERATOR', 'RMO']);
   });
 });
 
@@ -165,5 +219,41 @@ describe('retell webhook shared-secret check', () => {
     assert.equal(verify({ 'x-retell-signature': secret }), true);
     assert.equal(verify({}), false);
     assert.equal(verify({ authorization: 'Bearer wrong' }), false);
+  });
+});
+
+describe('password reset helpers', () => {
+  it('builds allowed origins and reset redirect URLs for prod and local', () => {
+    assert.equal(
+      resolveAppOrigin({ envSiteUrl: 'https://rmo.buildmyoffice.com/' }),
+      'https://rmo.buildmyoffice.com'
+    );
+    assert.equal(
+      resolveAppOrigin({
+        originHeader: 'http://localhost:3000',
+        nodeEnv: 'development'
+      }),
+      'http://localhost:3000'
+    );
+    assert.equal(
+      resolveAppOrigin({ originHeader: 'https://evil.example', nodeEnv: 'production' }),
+      'https://rmo.buildmyoffice.com'
+    );
+    assert.equal(
+      passwordResetRedirectTo('https://rmo.buildmyoffice.com'),
+      'https://rmo.buildmyoffice.com/auth/reset-password'
+    );
+    assert.equal(
+      passwordResetRedirectTo('http://localhost:3000/'),
+      'http://localhost:3000/auth/reset-password'
+    );
+    assert.equal(isAllowedAppOrigin('https://rmo.buildmyoffice.com'), true);
+    assert.equal(isAllowedAppOrigin('http://localhost:3000'), true);
+    assert.equal(isAllowedAppOrigin('https://phishing.example'), false);
+  });
+
+  it('enforces new-password minimum length', () => {
+    assert.equal(validateNewPassword('short').ok, false);
+    assert.equal(validateNewPassword('long-enough-password').ok, true);
   });
 });

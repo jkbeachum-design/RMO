@@ -42,7 +42,7 @@ cp .env.example .env.local
 npm run dev            # http://localhost:3000
 ```
 
-**Auth:** HMAC-signed session cookies + `user_licenses` company isolation. See [docs/AUTH.md](docs/AUTH.md).
+**Auth:** Supabase Auth (email/password) + HMAC-signed `rmo_session` cookies + `user_licenses` company isolation. See [docs/AUTH.md](docs/AUTH.md).
 
 **Operator intake:** Voice dial-in or structured PWA form (`/operator/submit-report`) with multi-project fields, per-sub COI uploads, membership-scoped history edits, and offline draft queue (see [docs/OFFLINE_PWA.md](docs/OFFLINE_PWA.md)).
 
@@ -52,7 +52,8 @@ npm run dev            # http://localhost:3000
 
 Backend `.env`: `SUPABASE_URL`, `SUPABASE_KEY` (service_role), `ANTHROPIC_API_KEY`, `RETELL_WEBHOOK_SECRET`
 
-Frontend `.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `SESSION_SECRET`, `BACKEND_URL`, `RETELL_WEBHOOK_SECRET`
+Frontend `.env.local`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `SESSION_SECRET`, `BACKEND_URL`, `RETELL_WEBHOOK_SECRET`  
+(`PILOT_PASSWORD` is deprecated — do not set.)
 
 ## Tests
 

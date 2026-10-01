@@ -108,7 +108,16 @@ function LoginForm() {
             />
           </label>
 
+          <div className="flex justify-end">
+            <a href="/forgot-password" className="text-xs text-teal-300/90 underline hover:text-teal-200">
+              Forgot password?
+            </a>
+          </div>
+
           {error ? <p className="text-sm text-amber-200">{error}</p> : null}
+          {searchParams.get('reset') === '1' ? (
+            <p className="text-sm text-teal-200">Password updated. Sign in with your new password.</p>
+          ) : null}
 
           <button
             type="submit"
