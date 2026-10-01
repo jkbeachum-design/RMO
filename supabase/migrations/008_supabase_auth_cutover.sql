@@ -10,9 +10,10 @@
 --        https://rmo.buildmyoffice.com/**
 --        http://localhost:3000/**
 -- 2. Create / set password for jbeachum@buildmyoffice.com (Dashboard Users,
---    or scripts/bootstrap-supabase-auth.mjs). First login with a legacy
---    password_hash also auto-provisions Auth and sets auth_user_id.
+--    scripts/bootstrap-supabase-auth.mjs, legacy password auto-migrate on
+--    first login, or Forgot password → reset email).
 -- 3. Unset PILOT_PASSWORD on Vercel (deprecated; no longer read for login).
+-- 4. Redirect allow list must include /auth/reset-password (+ /auth/confirm).
 --
 -- No new public tables in this cutover — Data API GRANTs unchanged.
 -- (If you add public tables later, GRANT SELECT to anon; GRANT SELECT,

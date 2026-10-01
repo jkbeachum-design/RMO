@@ -26,6 +26,21 @@
 
 If Auth sign-in fails but `users.password_hash` (scrypt) still verifies the password, the server **creates/links** a Supabase Auth user with that password and continues. After that, Auth is authoritative. **`PILOT_PASSWORD` is no longer read for login** (deprecated).
 
+## Forgot / reset password
+
+Use this when the password is unknown (do **not** bring back `PILOT_PASSWORD`).
+
+1. Login → **Forgot password?** → `/forgot-password`.
+2. `POST /api/auth/forgot-password` with `{ email }`.
+3. Server may provision a Supabase Auth user for an existing `public.users` row that lacks `auth_user_id`, then calls Auth `resetPasswordForEmail` with  
+   `redirectTo = {origin}/auth/reset-password`  
+   (`origin` = `NEXT_PUBLIC_SITE_URL` or request Origin / production default).
+4. Supabase sends the built-in reset email (no custom mailer in this app).
+5. User opens the link → `/auth/reset-password` (or `/auth/confirm` → forward) establishes a recovery session (`?code=` PKCE, `token_hash`, or implicit hash).
+6. User sets a new password via `updateUser({ password })`, then signs in on `/` → same `rmo_session` + membership routing as normal login.
+
+Always returns a generic success message (no email enumeration).
+
 ## Invites (operators / team)
 
 `POST /api/roles` with `action: invite` or `add`:
@@ -55,12 +70,13 @@ Existing app users without `auth_user_id` get Auth provisioned on invite/add.
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL (`https://hiceshmpjvqfptytlyzo.supabase.co`) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Anon/publishable key (Auth password verify + future RLS) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Anon/publishable key (Auth password verify + reset client) |
 | `SUPABASE_KEY` | yes | Server-only service role (membership queries + Auth Admin invites) |
 | `SESSION_SECRET` | **yes in production** (≥16 chars) | HMAC key for signed cookies |
+| `NEXT_PUBLIC_SITE_URL` | recommended | Canonical origin for reset emails (`https://rmo.buildmyoffice.com` in prod; `http://localhost:3000` locally). Falls back to request Origin / defaults. |
 | `BACKEND_URL` or `NEXT_PUBLIC_BACKEND_URL` | yes for manual submit | Express backend base URL |
 | `RETELL_WEBHOOK_SECRET` | yes for manual submit | Forwarded by `/api/operator/submit-report` |
-| `PILOT_PASSWORD` | **deprecated** | Ignored for login. Unset after Auth cutover. |
+| `PILOT_PASSWORD` | **deprecated** | Ignored for login. Unset after Auth cutover. Use Forgot password instead. |
 
 Generate a strong session secret:
 
@@ -74,14 +90,24 @@ Project: `hiceshmpjvqfptytlyzo`
 
 1. **Authentication → URL Configuration**
    - **Site URL:** `https://rmo.buildmyoffice.com`
-   - **Redirect URLs allow list:**
+   - **Redirect URLs allow list** (required for reset emails):
      - `https://rmo.buildmyoffice.com/**`
+     - `https://rmo.buildmyoffice.com/auth/reset-password`
+     - `https://rmo.buildmyoffice.com/auth/confirm`
      - `http://localhost:3000/**` (local)
+     - `http://localhost:3000/auth/reset-password`
+     - `http://localhost:3000/auth/confirm`
 2. **Authentication → Providers → Email:** enabled (password). Confirmations can stay on; invites use Admin `email_confirm: true`.
-3. **Jonathan first-time Auth** (pick one):
+3. **Authentication → Email Templates → Reset password**  
+   Default Supabase template is fine. No custom app mailer.  
+   Optional: if you switch the template to PKCE `token_hash` links, point them at  
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/auth/reset-password`.  
+   Built-in SMTP is enough for pilot volume; configure custom SMTP only if you hit rate limits or need branded From addresses.
+4. **Jonathan first-time Auth** (pick one):
    - **A. Auto-migrate:** Sign in once with the password that still matches his legacy `password_hash` (former pilot password). Server creates Auth + sets `auth_user_id`.
-   - **B. Dashboard:** Authentication → Users → Add user → `jbeachum@buildmyoffice.com` + password → then run link SQL or the bootstrap script.
-   - **C. Script** (service role):
+   - **B. Forgot password:** Use `/forgot-password` — provisions Auth if needed and emails a reset link.
+   - **C. Dashboard:** Authentication → Users → Add user → `jbeachum@buildmyoffice.com` + password → then run link SQL or the bootstrap script.
+   - **D. Script** (service role):
 
 ```bash
 SUPABASE_URL=https://hiceshmpjvqfptytlyzo.supabase.co \
@@ -91,7 +117,7 @@ BOOTSTRAP_PASSWORD='<strong-password>' \
 node scripts/bootstrap-supabase-auth.mjs
 ```
 
-4. **Vercel:** Confirm `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `SESSION_SECRET`. **Unset `PILOT_PASSWORD`.**
+5. **Vercel:** Confirm `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_KEY`, `SESSION_SECRET`, and set `NEXT_PUBLIC_SITE_URL=https://rmo.buildmyoffice.com`. **Unset `PILOT_PASSWORD`.**
 
 ## Database
 
@@ -115,7 +141,8 @@ Manual operator submits go through `POST /api/operator/submit-report` (session +
 3. **Operator-only:** Operator-class memberships → land on `/operator`; no RMO create UI.
 4. **Cross-company:** Request another license → 403 / denied.
 5. **Invite:** Roles → invite OPERATOR → temporary password shown once → that user signs in without `PILOT_PASSWORD`.
-6. **Webhook:** `POST /api/webhooks/retell` without secret → `401` in production.
+6. **Forgot password:** Request reset → open email link → set password → sign in → `rmo_session` works.
+7. **Webhook:** `POST /api/webhooks/retell` without secret → `401` in production.
 
 ## Automated tests
 
@@ -123,4 +150,4 @@ Manual operator submits go through `POST /api/operator/submit-report` (session +
 npm test
 ```
 
-Covers signed vs forged cookies, password hash verify (legacy cutover), Auth session helpers (mode/role), membership helper, webhook secret acceptance.
+Covers signed vs forged cookies, password hash verify (legacy cutover), Auth session helpers (mode/role), password-reset URL helpers + password policy, membership helper, webhook secret acceptance.

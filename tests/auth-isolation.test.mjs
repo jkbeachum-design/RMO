@@ -7,6 +7,12 @@ import {
   pickAppMode,
   rolesFromMemberships
 } from '../frontend/src/lib/authSession.ts';
+import {
+  isAllowedAppOrigin,
+  passwordResetRedirectTo,
+  resolveAppOrigin
+} from '../frontend/src/lib/siteUrl.ts';
+import { validateNewPassword } from '../frontend/src/lib/passwordPolicy.ts';
 
 // Mirror frontend/src/lib/session.ts + password.ts for Node test runner
 // (keeps CI free of a TS transpile step while asserting security properties)
@@ -213,5 +219,41 @@ describe('retell webhook shared-secret check', () => {
     assert.equal(verify({ 'x-retell-signature': secret }), true);
     assert.equal(verify({}), false);
     assert.equal(verify({ authorization: 'Bearer wrong' }), false);
+  });
+});
+
+describe('password reset helpers', () => {
+  it('builds allowed origins and reset redirect URLs for prod and local', () => {
+    assert.equal(
+      resolveAppOrigin({ envSiteUrl: 'https://rmo.buildmyoffice.com/' }),
+      'https://rmo.buildmyoffice.com'
+    );
+    assert.equal(
+      resolveAppOrigin({
+        originHeader: 'http://localhost:3000',
+        nodeEnv: 'development'
+      }),
+      'http://localhost:3000'
+    );
+    assert.equal(
+      resolveAppOrigin({ originHeader: 'https://evil.example', nodeEnv: 'production' }),
+      'https://rmo.buildmyoffice.com'
+    );
+    assert.equal(
+      passwordResetRedirectTo('https://rmo.buildmyoffice.com'),
+      'https://rmo.buildmyoffice.com/auth/reset-password'
+    );
+    assert.equal(
+      passwordResetRedirectTo('http://localhost:3000/'),
+      'http://localhost:3000/auth/reset-password'
+    );
+    assert.equal(isAllowedAppOrigin('https://rmo.buildmyoffice.com'), true);
+    assert.equal(isAllowedAppOrigin('http://localhost:3000'), true);
+    assert.equal(isAllowedAppOrigin('https://phishing.example'), false);
+  });
+
+  it('enforces new-password minimum length', () => {
+    assert.equal(validateNewPassword('short').ok, false);
+    assert.equal(validateNewPassword('long-enough-password').ok, true);
   });
 });
