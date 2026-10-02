@@ -32,6 +32,11 @@ CREATE INDEX IF NOT EXISTS compliance_settings_user_id_idx
 COMMENT ON TABLE public.compliance_settings IS
   'Per-license or per-user rule thresholds and digest preferences. license_id null = user defaults.';
 
+-- Data API grants (required for PostgREST after Oct 30, 2026; RLS still enforces access)
+grant select on public.compliance_settings to anon;
+grant select, insert, update, delete on public.compliance_settings to authenticated;
+grant select, insert, update, delete on public.compliance_settings to service_role;
+
 ALTER TABLE public.compliance_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS rmo_settings_select ON public.compliance_settings;
@@ -72,6 +77,11 @@ CREATE INDEX IF NOT EXISTS digest_runs_user_date_idx
 
 CREATE INDEX IF NOT EXISTS digest_runs_license_date_idx
   ON public.digest_runs (license_id, run_date);
+
+-- Data API grants (required for PostgREST after Oct 30, 2026; RLS still enforces access)
+grant select on public.digest_runs to anon;
+grant select, insert, update, delete on public.digest_runs to authenticated;
+grant select, insert, update, delete on public.digest_runs to service_role;
 
 ALTER TABLE public.digest_runs ENABLE ROW LEVEL SECURITY;
 
