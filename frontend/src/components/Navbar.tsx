@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { displayModeLabel } from '@/lib/labels';
 import type { AppMode } from '@/lib/types';
 
 const RMO_LINKS = [
@@ -10,6 +11,7 @@ const RMO_LINKS = [
   { href: '/dashboard/inbox', label: 'Inbox' },
   { href: '/dashboard/portfolio', label: 'Portfolio' },
   { href: '/dashboard/projects', label: 'Projects' },
+  { href: '/dashboard/subs', label: 'Subs' },
   { href: '/dashboard/supervision', label: 'Supervision' },
   { href: '/dashboard/vault', label: 'Vault' },
   { href: '/dashboard/compliance-log', label: 'Compliance Log' },
@@ -23,7 +25,10 @@ const RMO_LINKS = [
 const OPERATOR_LINKS = [
   { href: '/operator', label: 'Check-In' },
   { href: '/operator/submit-report', label: 'Manual Report' },
-  { href: '/operator/history', label: 'History' }
+  { href: '/operator/history', label: 'History' },
+  { href: '/operator/vault', label: 'Vault' },
+  { href: '/operator/projects', label: 'Projects' },
+  { href: '/operator/subs', label: 'Subs' }
 ];
 
 export default function Navbar({
@@ -78,7 +83,11 @@ export default function Navbar({
           </Link>
           <nav className="hidden gap-1 sm:flex">
             {links.map((link) => {
-              const active = pathname === link.href || (link.href !== '/dashboard' && link.href !== '/operator' && pathname.startsWith(link.href));
+              const active =
+                pathname === link.href ||
+                (link.href !== '/dashboard' &&
+                  link.href !== '/operator' &&
+                  pathname.startsWith(link.href));
               return (
                 <Link
                   key={link.href}
@@ -96,7 +105,7 @@ export default function Navbar({
         <div className="flex items-center gap-3 text-sm">
           <span className="hidden text-teal-100 md:inline">{name}</span>
           <span className="rounded bg-white/10 px-2 py-0.5 text-xs uppercase tracking-wide">
-            {mode === 'RMO' ? 'RMO' : 'Operator'}
+            {displayModeLabel(mode)}
           </span>
           {canSwitch ? (
             <button
@@ -104,7 +113,7 @@ export default function Navbar({
               onClick={switchMode}
               className="rounded border border-white/25 px-2.5 py-1 text-xs text-teal-50 hover:bg-white/10"
             >
-              Switch to {mode === 'RMO' ? 'Operator' : 'RMO'}
+              Switch to {mode === 'RMO' ? 'CEO' : 'RMO'}
             </button>
           ) : null}
           <button

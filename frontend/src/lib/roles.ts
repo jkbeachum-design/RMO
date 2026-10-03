@@ -58,21 +58,21 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     role: 'PM',
     label: 'Project manager',
-    summary: 'Field / project leadership — Operator PWA for check-ins and reports.',
+    summary: 'Field / project leadership — CEO portal for check-ins and reports.',
     modes: ['OPERATOR'],
     capabilities: ['view_operator_pwa', 'submit_operator_reports', 'log_supervision']
   },
   {
     role: 'FOREMAN',
     label: 'Foreman',
-    summary: 'Jobsite lead — Operator PWA check-ins and report submission.',
+    summary: 'Jobsite lead — CEO portal check-ins and report submission.',
     modes: ['OPERATOR'],
     capabilities: ['view_operator_pwa', 'submit_operator_reports']
   },
   {
     role: 'OPERATOR',
-    label: 'Operator',
-    summary: 'Field operator — voice/PWA check-ins and manual reports only.',
+    label: 'CEO',
+    summary: 'Company principal — voice/PWA check-ins and manual reports only.',
     modes: ['OPERATOR'],
     capabilities: ['view_operator_pwa', 'submit_operator_reports']
   }
@@ -82,12 +82,12 @@ export const ALL_ROLES: UserRole[] = ROLE_DEFINITIONS.map((r) => r.role);
 
 export const CAPABILITY_LABELS: Record<Capability, string> = {
   view_rmo_dashboard: 'RMO dashboard',
-  view_operator_pwa: 'Operator PWA',
+  view_operator_pwa: 'CEO portal',
   manage_team: 'Manage team & invites',
   edit_company_profile: 'Company onboarding / profile',
   run_rules_settings: 'Rules & digests',
   acknowledge_logs: 'Acknowledge compliance logs',
-  submit_operator_reports: 'Submit operator reports',
+  submit_operator_reports: 'Submit CEO reports',
   log_supervision: 'Log supervision evidence',
   export_audit_package: 'Audit defense export',
   manage_portfolio: 'Firm portfolio & clocks'

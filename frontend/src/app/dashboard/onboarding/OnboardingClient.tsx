@@ -246,8 +246,12 @@ export default function OnboardingClient({ userName }: { userName: string }) {
           <div>
             <h1 className="font-serif text-3xl text-slate-900">Company onboarding</h1>
             <p className="mt-2 text-sm text-slate-600">
-              Create CSLB companies, switch your portfolio, and edit association docs, ownership,
-              duty statement, and bonds.
+              You are signed in as RMO. Finish association docs, ownership, duty statement, and
+              bonds for each company. When ready, invite the CEO from{' '}
+              <a href="/dashboard/roles" className="text-teal-800 underline hover:text-teal-950">
+                Roles
+              </a>
+              .
             </p>
           </div>
           {canCreate ? (

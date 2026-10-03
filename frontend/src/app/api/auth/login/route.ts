@@ -5,15 +5,14 @@ import {
   authenticateUser,
   createSessionToken
 } from '@/lib/auth';
-import type { AppMode } from '@/lib/types';
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
-  const mode = (body.mode === 'OPERATOR' ? 'OPERATOR' : 'RMO') as AppMode;
 
-  const result = await authenticateUser(email, password, mode);
+  // Mode is derived from company memberships — never chosen at login.
+  const result = await authenticateUser(email, password);
   if ('error' in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

@@ -30,11 +30,38 @@ type ProjectDraft = {
 type SubDraft = {
   id?: string;
   company: string;
+  contactName: string;
+  phone: string;
+  email: string;
   cslbLicense: string;
   trade: string;
   coiExpiration: string;
   coiDocumentUrl: string;
   coiFile: File | null;
+};
+
+type KnownProject = {
+  id: string;
+  project_address: string;
+  contract_value: number | null;
+  permit_number: string | null;
+  trades_involved: string[] | null;
+  start_date: string | null;
+  end_date: string | null;
+  status: string | null;
+  scope_description?: string | null;
+};
+
+type KnownSub = {
+  id: string;
+  company_name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  cslb_license_number: string | null;
+  trade: string | null;
+  coi_expiration_date: string | null;
+  coi_document_url: string | null;
 };
 
 const emptyProject = (): ProjectDraft => ({
@@ -49,12 +76,43 @@ const emptyProject = (): ProjectDraft => ({
 
 const emptySub = (): SubDraft => ({
   company: '',
+  contactName: '',
+  phone: '',
+  email: '',
   cslbLicense: '',
   trade: '',
   coiExpiration: '',
   coiDocumentUrl: '',
   coiFile: null
 });
+
+function projectFromKnown(p: KnownProject): ProjectDraft {
+  return {
+    id: p.id,
+    address: p.project_address || '',
+    contractValue: p.contract_value != null ? String(p.contract_value) : '',
+    trades: (p.trades_involved || []).join(', '),
+    permitNumber: p.permit_number || '',
+    startDate: p.start_date || '',
+    endDate: p.end_date || '',
+    closeOut: false
+  };
+}
+
+function subFromKnown(s: KnownSub): SubDraft {
+  return {
+    id: s.id,
+    company: s.company_name || '',
+    contactName: s.contact_name || '',
+    phone: s.phone || '',
+    email: s.email || '',
+    cslbLicense: s.cslb_license_number || '',
+    trade: s.trade || '',
+    coiExpiration: s.coi_expiration_date || '',
+    coiDocumentUrl: s.coi_document_url || '',
+    coiFile: null
+  };
+}
 
 function todayISO() {
   return new Date().toISOString().split('T')[0];
@@ -159,6 +217,7 @@ function buildPayload(args: {
     projectsJson: args.projects.map((p) => {
       const closeOut = p.closeOut || Boolean(p.endDate);
       return {
+        id: p.id || null,
         address: p.address,
         contractValue: p.contractValue,
         trades: p.trades
@@ -169,11 +228,15 @@ function buildPayload(args: {
         startDate: p.startDate || null,
         endDate: p.endDate || (closeOut ? todayISO() : null),
         closed: closeOut,
-        status: (closeOut ? 'COMPLETED' : 'ACTIVE') as 'ACTIVE' | 'COMPLETED'
+        status: (closeOut ? 'COMPLETED' : 'ACTIVE') as 'ACTIVE' | 'ON_HOLD' | 'COMPLETED'
       };
     }),
     subsJson: namedSubs.map((s) => ({
+      id: s.id || null,
       company: s.company,
+      contactName: s.contactName || '',
+      phone: s.phone || '',
+      email: s.email || '',
       cslbLicense: s.cslbLicense,
       trade: s.trade,
       coiExpiration: s.coiExpiration,
@@ -194,6 +257,8 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
   const [operatorName, setOperatorName] = useState(userName);
   const [licenses, setLicenses] = useState<LicenseOption[]>([]);
   const [licenseId, setLicenseId] = useState('');
+  const [knownProjects, setKnownProjects] = useState<KnownProject[]>([]);
+  const [knownSubs, setKnownSubs] = useState<KnownSub[]>([]);
   const [projects, setProjects] = useState<ProjectDraft[]>([emptyProject()]);
   const [subcontractors, setSubcontractors] = useState<SubDraft[]>([emptySub()]);
   const [hasEmployees, setHasEmployees] = useState(false);
@@ -271,74 +336,70 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
         }
         if (cancelled) return;
 
-        const mappedProjects: ProjectDraft[] =
-          (data.projects || []).map(
-            (p: {
-              id: string;
-              project_address: string;
-              contract_value: number | null;
-              permit_number: string | null;
-              trades_involved: string[] | null;
-              start_date: string | null;
-              end_date: string | null;
-            }) => ({
-              id: p.id,
-              address: p.project_address || '',
-              contractValue: p.contract_value != null ? String(p.contract_value) : '',
-              trades: (p.trades_involved || []).join(', '),
-              permitNumber: p.permit_number || '',
-              startDate: p.start_date || '',
-              endDate: p.end_date || '',
-              closeOut: false
-            })
-          ) || [];
-
-        const mappedSubs: SubDraft[] =
-          (data.subcontractors || []).map(
-            (s: {
-              id: string;
-              company_name: string;
-              cslb_license_number: string | null;
-              trade: string | null;
-              coi_expiration_date: string | null;
-              coi_document_url: string | null;
-            }) => ({
-              id: s.id,
-              company: s.company_name || '',
-              cslbLicense: s.cslb_license_number || '',
-              trade: s.trade || '',
-              coiExpiration: s.coi_expiration_date || '',
-              coiDocumentUrl: s.coi_document_url || '',
-              coiFile: null
-            })
-          ) || [];
-
-        setProjects(mappedProjects.length ? mappedProjects : [emptyProject()]);
-        setSubcontractors(mappedSubs.length ? mappedSubs : [emptySub()]);
+        const catalogProjects = (data.projects || []) as KnownProject[];
+        const catalogSubs = (data.subcontractors || []) as KnownSub[];
+        setKnownProjects(catalogProjects);
+        setKnownSubs(catalogSubs);
+        // Start with blank report rows — pick existing from dropdowns or add new
+        setProjects([emptyProject()]);
+        setSubcontractors([emptySub()]);
         setUsingCachedContext(false);
         await saveOperatorContextCache({
           licenseId,
           savedAt: new Date().toISOString(),
-          projects: mappedProjects.length ? mappedProjects : [emptyProject()],
-          subcontractors: (mappedSubs.length ? mappedSubs : [emptySub()]).map((s) => ({
-            id: s.id,
-            company: s.company,
-            cslbLicense: s.cslbLicense,
-            trade: s.trade,
-            coiExpiration: s.coiExpiration,
-            coiDocumentUrl: s.coiDocumentUrl
-          }))
+          projects: catalogProjects.map(projectFromKnown),
+          subcontractors: catalogSubs.map((s) => {
+            const mapped = subFromKnown(s);
+            return {
+              id: mapped.id,
+              company: mapped.company,
+              contactName: mapped.contactName,
+              phone: mapped.phone,
+              email: mapped.email,
+              cslbLicense: mapped.cslbLicense,
+              trade: mapped.trade,
+              coiExpiration: mapped.coiExpiration,
+              coiDocumentUrl: mapped.coiDocumentUrl
+            };
+          })
         }).catch(() => {});
       } catch (err) {
         const cached = await loadOperatorContextCache(licenseId).catch(() => null);
         if (cancelled) return;
         if (cached) {
-          setProjects(cached.projects.length ? cached.projects : [emptyProject()]);
-          setSubcontractors(
-            cached.subcontractors.length
-              ? cached.subcontractors.map((s) => ({ ...s, coiFile: null }))
-              : [emptySub()]
+          setKnownProjects(
+            cached.projects
+              .filter((p) => p.id)
+              .map((p) => ({
+                id: p.id as string,
+                project_address: p.address,
+                contract_value: p.contractValue ? Number(p.contractValue) : null,
+                permit_number: p.permitNumber || null,
+                trades_involved: p.trades
+                  ? p.trades.split(',').map((t) => t.trim()).filter(Boolean)
+                  : [],
+                start_date: p.startDate || null,
+                end_date: p.endDate || null,
+                status: 'ACTIVE'
+              }))
           );
+          setKnownSubs(
+            cached.subcontractors
+              .filter((s) => s.id)
+              .map((s) => ({
+                id: s.id as string,
+                company_name: s.company,
+                contact_name: s.contactName || null,
+                phone: s.phone || null,
+                email: s.email || null,
+                cslb_license_number: s.cslbLicense || null,
+                trade: s.trade || null,
+                coi_expiration_date: s.coiExpiration || null,
+                coi_document_url: s.coiDocumentUrl || null
+              }))
+          );
+          setProjects([emptyProject()]);
+          setSubcontractors([emptySub()]);
           setUsingCachedContext(true);
           setError('');
           setMessage('Using last saved projects & subcontractors while offline.');
@@ -529,8 +590,8 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
       <div className="mx-auto max-w-2xl">
         <h1 className="font-serif text-4xl">Submit Compliance Report</h1>
         <p className="mt-2 text-slate-600">
-          Active projects and subcontractors load from your license each time. Each sub needs its
-          own current COI on file.
+          Pick existing projects and subs from the dropdowns, or add new ones for this report. Each
+          sub needs its own current COI on file.
         </p>
         {usingCachedContext ? (
           <p className="mt-2 text-xs text-amber-800">
@@ -540,7 +601,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-8">
           <section className="border-l-4 border-teal-700 bg-white p-5 pl-4 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold">Operator identification</h2>
+            <h2 className="mb-4 text-lg font-semibold">CEO identification</h2>
             <div className="space-y-3">
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-700">Your name</span>
@@ -569,10 +630,12 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                 </select>
               </label>
               {loadingContext ? (
-                <p className="text-xs text-slate-500">Loading saved projects & subcontractors…</p>
+                <p className="text-xs text-slate-500">Loading company projects & subcontractors…</p>
               ) : (
                 <p className="text-xs text-slate-500">
-                  Showing saved ACTIVE projects and all subcontractors for this license.
+                  {knownProjects.length} project{knownProjects.length === 1 ? '' : 's'} and{' '}
+                  {knownSubs.length} sub{knownSubs.length === 1 ? '' : 's'} available to pick from.
+                  Choose existing records from the dropdowns — or add new ones for this report.
                 </p>
               )}
             </div>
@@ -580,7 +643,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
 
           <section className="border-l-4 border-emerald-600 bg-white p-5 pl-4 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Active projects</h2>
+              <h2 className="text-lg font-semibold">Projects on this report</h2>
               <button
                 type="button"
                 onClick={() => setProjects([...projects, emptyProject()])}
@@ -590,12 +653,38 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
               </button>
             </div>
             {projects.map((project, idx) => (
-              <div key={project.id || idx} className="mb-4 border border-slate-200 p-4 last:mb-0">
+              <div key={`${project.id || 'new'}-${idx}`} className="mb-4 border border-slate-200 p-4 last:mb-0">
                 <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Project {idx + 1}
                   {project.closeOut ? ' · closing out' : ''}
                 </p>
                 <div className="space-y-3">
+                  <label className="block text-sm text-slate-600">
+                    Pick existing or new
+                    <select
+                      value={project.id || ''}
+                      onChange={(e) => {
+                        const next = [...projects];
+                        const selectedId = e.target.value;
+                        if (!selectedId) {
+                          next[idx] = emptyProject();
+                        } else {
+                          const known = knownProjects.find((p) => p.id === selectedId);
+                          next[idx] = known ? projectFromKnown(known) : emptyProject();
+                        }
+                        setProjects(next);
+                      }}
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    >
+                      <option value="">New project…</option>
+                      {knownProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.project_address}
+                          {p.status === 'ON_HOLD' ? ' (on hold)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <input
                     type="text"
                     placeholder="Project address"
@@ -603,7 +692,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                     required
                     onChange={(e) => {
                       const next = [...projects];
-                      next[idx] = { ...next[idx], address: e.target.value };
+                      next[idx] = { ...next[idx], address: e.target.value, id: undefined };
                       setProjects(next);
                     }}
                     className="w-full rounded border border-slate-300 px-3 py-2"
@@ -713,21 +802,21 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
 
           <section className="border-l-4 border-amber-500 bg-white p-5 pl-4 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Subcontractors</h2>
+              <h2 className="text-lg font-semibold">Subs on this report</h2>
               <button
                 type="button"
                 onClick={() => setSubcontractors([...subcontractors, emptySub()])}
                 className="text-sm font-medium text-teal-800 hover:underline"
               >
-                + Add subcontractor
+                + Add sub
               </button>
             </div>
             <p className="mb-3 text-xs text-slate-500">
-              Upload each sub&apos;s COI here. Green = current COI on file and not expired. Offline
-              COI picks are stored on this phone when possible.
+              Pick an existing sub or add a new one. Upload each COI here. Green = current COI on
+              file and not expired. Offline COI picks are stored on this phone when possible.
             </p>
             {subcontractors.map((sub, idx) => (
-              <div key={sub.id || idx} className="mb-4 border border-slate-200 p-4 last:mb-0">
+              <div key={`${sub.id || 'new'}-${idx}`} className="mb-4 border border-slate-200 p-4 last:mb-0">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Sub {idx + 1}
@@ -738,17 +827,78 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                   <CoiStatusBadge sub={sub} />
                 </div>
                 <div className="space-y-3">
+                  <label className="block text-sm text-slate-600">
+                    Pick existing or new
+                    <select
+                      value={sub.id || ''}
+                      onChange={(e) => {
+                        const next = [...subcontractors];
+                        const selectedId = e.target.value;
+                        if (!selectedId) {
+                          next[idx] = emptySub();
+                        } else {
+                          const known = knownSubs.find((s) => s.id === selectedId);
+                          next[idx] = known ? subFromKnown(known) : emptySub();
+                        }
+                        setSubcontractors(next);
+                      }}
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    >
+                      <option value="">New sub…</option>
+                      {knownSubs.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.company_name}
+                          {s.trade ? ` · ${s.trade}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <input
                     type="text"
                     placeholder="Company name"
                     value={sub.company}
                     onChange={(e) => {
                       const next = [...subcontractors];
-                      next[idx] = { ...next[idx], company: e.target.value };
+                      next[idx] = { ...next[idx], company: e.target.value, id: undefined };
                       setSubcontractors(next);
                     }}
                     className="w-full rounded border border-slate-300 px-3 py-2"
                   />
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input
+                      type="text"
+                      placeholder="Contact name"
+                      value={sub.contactName}
+                      onChange={(e) => {
+                        const next = [...subcontractors];
+                        next[idx] = { ...next[idx], contactName: e.target.value };
+                        setSubcontractors(next);
+                      }}
+                      className="w-full rounded border border-slate-300 px-3 py-2"
+                    />
+                    <input
+                      type="tel"
+                      placeholder="Phone"
+                      value={sub.phone}
+                      onChange={(e) => {
+                        const next = [...subcontractors];
+                        next[idx] = { ...next[idx], phone: e.target.value };
+                        setSubcontractors(next);
+                      }}
+                      className="w-full rounded border border-slate-300 px-3 py-2"
+                    />
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      value={sub.email}
+                      onChange={(e) => {
+                        const next = [...subcontractors];
+                        next[idx] = { ...next[idx], email: e.target.value };
+                        setSubcontractors(next);
+                      }}
+                      className="w-full rounded border border-slate-300 px-3 py-2"
+                    />
+                  </div>
                   <input
                     type="text"
                     placeholder="CSLB license number"

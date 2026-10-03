@@ -20,7 +20,7 @@ export default function ComplianceLogTable({ logs }: { logs: ComplianceLog[] }) 
         <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
             <th className="px-4 py-3 font-medium">When</th>
-            <th className="px-4 py-3 font-medium">Operator</th>
+            <th className="px-4 py-3 font-medium">CEO</th>
             <th className="px-4 py-3 font-medium">Project</th>
             <th className="px-4 py-3 font-medium">Value</th>
             <th className="px-4 py-3 font-medium">Flags</th>

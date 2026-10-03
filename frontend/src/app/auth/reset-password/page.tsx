@@ -139,7 +139,7 @@ function ResetPasswordForm() {
       <p className="mb-2 text-xs uppercase tracking-[0.2em] text-teal-200/80">Account recovery</p>
       <h1 className="font-serif text-3xl leading-none tracking-tight">Set a new password</h1>
       <p className="mt-3 text-sm text-teal-100/80">
-        After saving, sign in normally. Your RMO / Operator access is unchanged.
+        After saving, sign in normally. Your RMO / CEO access is unchanged.
       </p>
 
       {status === 'loading' ? (

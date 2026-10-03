@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { format } from 'date-fns';
@@ -5,6 +6,7 @@ import AppShell from '@/components/AppShell';
 import LicenseSwitcher from '@/components/LicenseSwitcher';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { loadMemberships, membershipLicenseIds, resolveAccessibleLicense } from '@/lib/access';
+import { projectStatusClass, projectStatusLabel } from '@/lib/projectStatus';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import type { License } from '@/lib/types';
 
@@ -77,18 +79,26 @@ export default async function ProjectsPage({
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm uppercase tracking-wide text-slate-500">Ops</p>
-          <h1 className="font-serif text-4xl">Project registry</h1>
+          <h1 className="font-serif text-4xl">Projects</h1>
           <p className="mt-1 text-slate-600">
             {resolved.license.entity_name} · {resolved.license.classification}
           </p>
         </div>
-        <Suspense fallback={null}>
-          <LicenseSwitcher licenses={(licenses || []) as License[]} current={current} />
-        </Suspense>
+        <div className="flex flex-wrap items-end gap-3">
+          <Suspense fallback={null}>
+            <LicenseSwitcher licenses={(licenses || []) as License[]} current={current} />
+          </Suspense>
+          <Link
+            href={`/dashboard/projects/new?license=${encodeURIComponent(current)}`}
+            className="rounded bg-[#0f2a2a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#163838]"
+          >
+            Add project
+          </Link>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2 text-sm">
-        {['ACTIVE', 'COMPLETED', 'all'].map((s) => (
+        {['ACTIVE', 'ON_HOLD', 'COMPLETED', 'all'].map((s) => (
           <a
             key={s}
             href={statusLink(s)}
@@ -98,7 +108,7 @@ export default async function ProjectsPage({
                 : 'border border-slate-300 bg-white text-slate-800'
             }`}
           >
-            {s === 'all' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
+            {s === 'all' ? 'All' : projectStatusLabel(s)}
           </a>
         ))}
       </div>
@@ -119,7 +129,12 @@ export default async function ProjectsPage({
             {list.map((p) => (
               <tr key={p.id} className="border-b border-slate-100 last:border-0">
                 <td className="px-4 py-3 font-medium text-slate-900">
-                  {p.project_address || '—'}
+                  <Link
+                    href={`/dashboard/projects/${p.id}?license=${encodeURIComponent(current)}`}
+                    className="text-teal-900 hover:underline"
+                  >
+                    {p.project_address || '—'}
+                  </Link>
                 </td>
                 <td className="px-4 py-3 tabular-nums">
                   {p.contract_value != null
@@ -136,13 +151,9 @@ export default async function ProjectsPage({
                 </td>
                 <td className="px-4 py-3">
                   <span
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${
-                      p.status === 'COMPLETED'
-                        ? 'bg-slate-200 text-slate-800'
-                        : 'bg-teal-100 text-teal-900'
-                    }`}
+                    className={`rounded px-2 py-0.5 text-xs font-medium ${projectStatusClass(p.status)}`}
                   >
-                    {p.status || 'ACTIVE'}
+                    {projectStatusLabel(p.status)}
                   </span>
                   {p.updated_at ? (
                     <span className="mt-1 block text-xs text-slate-400">
@@ -155,8 +166,7 @@ export default async function ProjectsPage({
             {!list.length ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                  No projects in this filter. Structured operator reports will populate this
-                  registry.
+                  No projects in this filter. Add one here or from a CEO report.
                 </td>
               </tr>
             ) : null}

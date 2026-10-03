@@ -28,17 +28,22 @@ export function rolesFromMemberships(
   return roles;
 }
 
+/**
+ * Choose RMO dashboard vs CEO portal from memberships.
+ * Login never picks a mode; `requestedMode` is only for in-session switch-mode.
+ * Default when dual-roled: RMO. CEO-only memberships land on OPERATOR (/operator).
+ */
 export function pickAppMode(
   memberships: MembershipLike[],
   accountRole: UserRole,
   requestedMode?: AppMode
 ): AppMode {
   const roles = rolesFromMemberships(memberships, accountRole);
-  let mode: AppMode = requestedMode === 'OPERATOR' ? 'OPERATOR' : 'RMO';
-  if (!canUseModeFromRoles(roles, mode)) {
-    mode = canUseModeFromRoles(roles, 'RMO') ? 'RMO' : 'OPERATOR';
+  if (requestedMode && canUseModeFromRoles(roles, requestedMode)) {
+    return requestedMode;
   }
-  return mode;
+  if (canUseModeFromRoles(roles, 'RMO')) return 'RMO';
+  return 'OPERATOR';
 }
 
 export function buildSessionUser(input: {

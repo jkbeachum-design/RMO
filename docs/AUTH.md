@@ -140,7 +140,8 @@ Manual operator submits go through `POST /api/operator/submit-report` (session +
 2. **Auth login:** Valid Supabase Auth user linked to `users` + memberships → dashboard lists only their licenses.
 3. **Operator-only:** Operator-class memberships → land on `/operator`; no RMO create UI.
 4. **Cross-company:** Request another license → 403 / denied.
-5. **Invite:** Roles → invite OPERATOR → temporary password shown once → that user signs in without `PILOT_PASSWORD`.
+5. **Invite:** Roles → **Add CEO** (or invite OPERATOR) → temporary password shown once → that user signs in without `PILOT_PASSWORD` and lands on `/operator`.
+6. **New RMO:** `/onboarding` → confirm RMO → create email/password + first company → role assigned at signup; login stays email/password only (no role toggle).
 6. **Forgot password:** Request reset → open email link → set password → sign in → `rmo_session` works.
 7. **Webhook:** `POST /api/webhooks/retell` without secret → `401` in production.
 

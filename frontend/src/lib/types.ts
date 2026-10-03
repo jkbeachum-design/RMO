@@ -1,6 +1,6 @@
 export type UserRole = 'RMO' | 'OPERATOR' | 'ADMIN' | 'PM' | 'FOREMAN';
 
-/** UI surface: RMO dashboard vs Operator PWA. Derived from membership roles. */
+/** UI surface: RMO dashboard vs CEO portal (routes under /operator). Derived from membership roles. */
 export type AppMode = 'RMO' | 'OPERATOR';
 
 export type RiskFlag = {
@@ -108,7 +108,7 @@ export type SessionUser = {
   name: string;
   /** Primary / account role from users table or strongest membership. */
   role: UserRole;
-  /** Active UI mode (RMO dashboard vs Operator PWA). */
+  /** Active UI mode (RMO dashboard vs CEO portal). */
   mode: AppMode;
   /** License UUIDs the user may access (cached in session; revalidated on sensitive paths). */
   licenseIds: string[];
