@@ -24,15 +24,15 @@ export async function GET(req: Request) {
     supabase
       .from('projects')
       .select(
-        'id, project_address, contract_value, permit_number, trades_involved, start_date, end_date, status'
+        'id, project_address, contract_value, permit_number, trades_involved, start_date, end_date, status, scope_description'
       )
       .eq('license_id', resolved.license.id)
-      .eq('status', 'ACTIVE')
+      .in('status', ['ACTIVE', 'ON_HOLD'])
       .order('updated_at', { ascending: false }),
     supabase
       .from('subcontractors')
       .select(
-        'id, company_name, cslb_license_number, trade, coi_expiration_date, coi_verified, notes'
+        'id, company_name, contact_name, phone, email, cslb_license_number, trade, coi_expiration_date, coi_verified, notes'
       )
       .eq('license_id', resolved.license.id)
       .order('company_name', { ascending: true })

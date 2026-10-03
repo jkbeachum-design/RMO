@@ -132,7 +132,7 @@ export default function OperatorHistoryClient({
         raw_statement:
           draft.crew_statement ||
           (draft.has_direct_employees
-            ? 'Operator reported direct employees/hired crew'
+            ? 'CEO reported direct employees/hired crew'
             : 'No direct employees — everything subcontractors')
       }
     };
@@ -220,7 +220,7 @@ export default function OperatorHistoryClient({
                 <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                   <p className="text-sm font-semibold text-slate-800">Edit report</p>
                   <label className="block text-sm">
-                    <span className="mb-1 block text-slate-600">Operator name</span>
+                    <span className="mb-1 block text-slate-600">CEO name</span>
                     <input
                       value={draft.operator_name}
                       onChange={(e) => setDraft({ ...draft, operator_name: e.target.value })}

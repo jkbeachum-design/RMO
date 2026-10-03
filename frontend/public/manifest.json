@@ -1,7 +1,7 @@
 {
-  "name": "RMO Compliance Operator",
-  "short_name": "RMO Operator",
-  "description": "Field operator intake for RMO Compliance — submit reports even when signal drops",
+  "name": "RMO Compliance CEO",
+  "short_name": "RMO CEO",
+  "description": "CEO intake for RMO Compliance — submit reports even when signal drops",
   "start_url": "/operator",
   "scope": "/",
   "display": "standalone",

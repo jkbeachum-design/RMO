@@ -76,7 +76,7 @@ export default async function LogDetailPage({
             <h2 className="mb-3 text-lg font-semibold">Extracted data</h2>
             <dl className="grid gap-3 sm:grid-cols-2 text-sm">
               <div>
-                <dt className="text-slate-500">Operator</dt>
+                <dt className="text-slate-500">CEO</dt>
                 <dd className="font-medium">{extracted.operator_name || '—'}</dd>
               </div>
               <div>
@@ -221,7 +221,7 @@ export default async function LogDetailPage({
 
           <div className="border border-slate-200 bg-white p-5">
             <h2 className="mb-3 text-lg font-semibold">
-              {log.source_type === 'PWA_FORM' ? 'Operator notes' : 'Raw transcript'}
+              {log.source_type === 'PWA_FORM' ? 'CEO notes' : 'Raw transcript'}
             </h2>
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs text-slate-700">
               {log.raw_payload || 'No transcript stored.'}

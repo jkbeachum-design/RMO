@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
+import { displayRoleLabel } from '@/lib/labels';
 import {
   ALL_ROLES,
   CAPABILITY_LABELS,
@@ -155,8 +156,8 @@ export default function RolesClient({ userName }: { userName: string }) {
           <div>
             <h1 className="font-serif text-3xl text-slate-900">Roles & team</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Beyond RMO/Operator: ADMIN shares the RMO dashboard; PM and Foreman use the Operator
-              PWA. Membership is always company-scoped. Add another CSLB company from Onboarding.
+              Beyond RMO/CEO: ADMIN shares the RMO dashboard; PM and Foreman use the CEO
+              portal. Membership is always company-scoped. Add another CSLB company from Onboarding.
             </p>
           </div>
           <a
@@ -205,7 +206,7 @@ export default function RolesClient({ userName }: { userName: string }) {
                   <th className="py-2 pr-4 font-medium">Capability</th>
                   {matrix.map((r) => (
                     <th key={r.role} className="px-2 py-2 font-medium">
-                      {r.role}
+                      {displayRoleLabel(r.role)}
                     </th>
                   ))}
                 </tr>
@@ -265,12 +266,12 @@ export default function RolesClient({ userName }: { userName: string }) {
                           >
                             {ALL_ROLES.map((r) => (
                               <option key={r} value={r}>
-                                {r}
+                                {displayRoleLabel(r)}
                               </option>
                             ))}
                           </select>
                         ) : (
-                          m.role
+                          displayRoleLabel(m.role)
                         )}
                       </td>
                       {canManage ? (
@@ -305,7 +306,7 @@ export default function RolesClient({ userName }: { userName: string }) {
               <ul className="mt-1 space-y-1">
                 {invites.map((i) => (
                   <li key={i.id}>
-                    {i.email} → {i.role}
+                    {i.email} → {displayRoleLabel(i.role)}
                   </li>
                 ))}
               </ul>
@@ -341,7 +342,7 @@ export default function RolesClient({ userName }: { userName: string }) {
                 >
                   {ALL_ROLES.map((r) => (
                     <option key={r} value={r}>
-                      {r}
+                      {displayRoleLabel(r)}
                     </option>
                   ))}
                 </select>

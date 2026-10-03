@@ -14,7 +14,7 @@ export default function OperatorHomePage() {
   return (
     <AppShell mode="OPERATOR" name={session.name}>
       <div className="mx-auto max-w-md">
-        <p className="text-sm uppercase tracking-wide text-slate-500">Operator check-in</p>
+        <p className="text-sm uppercase tracking-wide text-slate-500">CEO check-in</p>
         <h1 className="font-serif text-4xl">RMO Compliance</h1>
         <p className="mt-2 text-slate-600">
           Report projects, subcontractors, and crew status for your RMO audit trail.
@@ -60,7 +60,7 @@ export default function OperatorHomePage() {
           <p className="font-semibold text-slate-900">Install on your phone</p>
           <p className="mt-1">
             Use your browser&apos;s <strong>Add to Home Screen</strong> / Install app action while
-            online. After one visit, Operator home, Submit report, and History keep working with
+            online. After one visit, CEO home, Submit report, and History keep working with
             weak signal — drafts queue on this phone and send when you&apos;re back online.
           </p>
         </div>

@@ -20,7 +20,7 @@ export default function OnlineStatusBanner({ compact = false }: { compact?: bool
     >
       <p className="font-semibold">You’re offline</p>
       <p className="mt-0.5 text-xs opacity-90">
-        Operator pages you already opened still work. New reports save on this phone and send when
+        CEO pages you already opened still work. New reports save on this phone and send when
         you’re back online. File uploads are kept locally when possible — you’ll be asked to
         re-attach anything that couldn’t be stored.
       </p>

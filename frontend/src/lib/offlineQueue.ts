@@ -11,6 +11,7 @@ const STORE_FILES = 'pending_files';
 const STORE_CONTEXT = 'context_cache';
 
 export type ProjectPayload = {
+  id?: string | null;
   address: string;
   contractValue: string;
   trades: string[];
@@ -18,11 +19,15 @@ export type ProjectPayload = {
   startDate: string | null;
   endDate: string | null;
   closed: boolean;
-  status: 'ACTIVE' | 'COMPLETED';
+  status: 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
 };
 
 export type SubPayload = {
+  id?: string | null;
   company: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
   cslbLicense: string;
   trade: string;
   coiExpiration: string;
@@ -82,6 +87,9 @@ export type CachedContext = {
   subcontractors: Array<{
     id?: string;
     company: string;
+    contactName?: string;
+    phone?: string;
+    email?: string;
     cslbLicense: string;
     trade: string;
     coiExpiration: string;

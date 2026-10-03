@@ -80,7 +80,7 @@ function LoginForm() {
                 mode === 'OPERATOR' ? 'bg-white text-[#0f2a2a]' : 'text-teal-100 hover:bg-white/10'
               }`}
             >
-              Operator
+              CEO
             </button>
           </div>
 

@@ -6,11 +6,11 @@ export const metadata: Metadata = {
   title: 'RMO Compliance',
   description: 'Compliance audit and supervision platform for Responsible Managing Officers',
   manifest: '/manifest.json',
-  applicationName: 'RMO Operator',
+  applicationName: 'RMO CEO',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'RMO Operator'
+    title: 'RMO CEO'
   },
   icons: {
     icon: [

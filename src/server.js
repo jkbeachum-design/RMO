@@ -564,29 +564,48 @@ function evaluateComplianceRules(extractedData, license, settings = defaultRuleS
 // ============================================================================
 
 async function upsertProject(licenseId, projectData) {
-  if (!projectData?.address) {
+  if (!projectData?.address && !projectData?.id) {
     console.warn('Skipping project upsert: missing address');
     return null;
   }
 
   const hasEndDate = Boolean(projectData.end_date);
-  const status =
-    projectData.status === 'COMPLETED' || projectData.closed || hasEndDate
-      ? 'COMPLETED'
-      : projectData.status || 'ACTIVE';
+  let status = String(projectData.status || 'ACTIVE').toUpperCase();
+  if (projectData.closed || (hasEndDate && status !== 'ON_HOLD')) {
+    status = 'COMPLETED';
+  }
+  if (status !== 'ON_HOLD' && status !== 'COMPLETED') status = 'ACTIVE';
 
+  const trades = Array.isArray(projectData.trades) ? projectData.trades : [];
   const row = {
     license_id: licenseId,
-    project_address: projectData.address,
+    project_address: projectData.address || null,
     contract_value: projectData.contract_value ?? null,
     permit_number: projectData.permit_number || null,
-    trades_involved: projectData.trades || [],
-    scope_description: projectData.trades ? projectData.trades.join(', ') : null,
+    trades_involved: trades,
+    scope_description:
+      projectData.scope_description || (trades.length ? trades.join(', ') : null),
     start_date: projectData.start_date || null,
     end_date: projectData.end_date || null,
     status,
     updated_at: new Date().toISOString()
   };
+
+  if (projectData.id) {
+    const { data, error } = await supabase
+      .from('projects')
+      .update(row)
+      .eq('id', projectData.id)
+      .eq('license_id', licenseId)
+      .select();
+    if (error) console.error('Project update-by-id error:', error);
+    if (data?.length) return data;
+  }
+
+  if (!projectData.address) {
+    console.warn('Skipping project upsert: missing address');
+    return null;
+  }
 
   // Schema has no UNIQUE(license_id, project_address) — select then insert/update
   const { data: existing, error: findError } = await supabase
@@ -633,6 +652,9 @@ async function upsertSubcontractor(licenseId, subData) {
   const row = {
     license_id: licenseId,
     company_name: subData.company_name,
+    contact_name: subData.contact_name || subData.contactName || null,
+    phone: subData.phone || null,
+    email: subData.email || null,
     cslb_license_number: subData.cslb_license_number || null,
     trade: subData.trade || null,
     coi_expiration_date: coiDate,
@@ -642,6 +664,17 @@ async function upsertSubcontractor(licenseId, subData) {
     cslb_verified: false,
     updated_at: new Date().toISOString()
   };
+
+  if (subData.id) {
+    const { data, error } = await supabase
+      .from('subcontractors')
+      .update(row)
+      .eq('id', subData.id)
+      .eq('license_id', licenseId)
+      .select();
+    if (error) console.error('Subcontractor update-by-id error:', error);
+    if (data?.length) return data;
+  }
 
   if (row.cslb_license_number) {
     const { data, error } = await supabase
@@ -947,12 +980,17 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
 
     const today = new Date().toISOString().split('T')[0];
     const projectsData = projectsRaw
-      .filter((p) => p && (p.address || p.contractValue || p.contract_value))
+      .filter((p) => p && (p.id || p.address || p.contractValue || p.contract_value))
       .map((p) => {
-        const closed = Boolean(p.closed || p.status === 'COMPLETED');
-        const endDate = p.end_date || p.endDate || (closed ? today : null) || null;
+        const requestedStatus = String(p.status || '').toUpperCase();
+        const closed = Boolean(p.closed || requestedStatus === 'COMPLETED');
+        const onHold = requestedStatus === 'ON_HOLD';
+        const endDate =
+          p.end_date || p.endDate || (closed && !onHold ? today : null) || null;
         const startDate = p.start_date || p.startDate || null;
+        const status = onHold ? 'ON_HOLD' : closed || endDate ? 'COMPLETED' : 'ACTIVE';
         return {
+          id: p.id || null,
           address: p.address || null,
           contract_value:
             p.contract_value != null && p.contract_value !== ''
@@ -967,15 +1005,16 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
                 .map((t) => t.trim())
                 .filter(Boolean),
           permit_number: p.permit_number || p.permitNumber || null,
+          scope_description: p.scope_description || p.scope || null,
           start_date: startDate,
           end_date: endDate,
-          status: closed || endDate ? 'COMPLETED' : 'ACTIVE',
-          closed: closed || Boolean(endDate),
+          status,
+          closed: status === 'COMPLETED',
           subcontractors_mentioned: p.subcontractors_mentioned || []
         };
       });
 
-    const namedSubs = subcontractorsRaw.filter((s) => s && (s.company || s.company_name));
+    const namedSubs = subcontractorsRaw.filter((s) => s && (s.id || s.company || s.company_name));
     const subcontractorsData = namedSubs.map((s, idx) => {
       const company = s.company_name || s.company;
       const coiUrl = coiBySubIndex[idx] || s.coi_document_url || s.coiDocumentUrl || null;
@@ -984,7 +1023,11 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
         fileUrls.cois.push({ company_name: company, url: coiUrl });
       }
       return {
+        id: s.id || null,
         company_name: company,
+        contact_name: s.contact_name || s.contactName || null,
+        phone: s.phone || null,
+        email: s.email || null,
         cslb_license_number: s.cslb_license_number || s.cslbLicense || null,
         trade: s.trade || null,
         coi_expiration_date: coiDate,
