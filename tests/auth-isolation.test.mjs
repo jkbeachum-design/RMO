@@ -171,15 +171,19 @@ describe('auth session mode routing (post Supabase Auth)', () => {
     assert.equal(canUseModeFromRoles(['FOREMAN'], 'OPERATOR'), true);
   });
 
-  it('picks Operator when requested and memberships allow; falls back for operator-only', () => {
+  it('defaults dual-role login to RMO; CEO-only to OPERATOR; honors in-session switch request', () => {
     const dual = [
       { license_id: 'a', role: 'RMO' },
       { license_id: 'a', role: 'OPERATOR' }
     ];
+    // Login no longer sends a mode — dual membership defaults to RMO dashboard.
+    assert.equal(pickAppMode(dual, 'RMO'), 'RMO');
     assert.equal(pickAppMode(dual, 'RMO', 'OPERATOR'), 'OPERATOR');
     assert.equal(pickAppMode(dual, 'RMO', 'RMO'), 'RMO');
 
     const operatorOnly = [{ license_id: 'a', role: 'OPERATOR' }];
+    assert.equal(pickAppMode(operatorOnly, 'OPERATOR'), 'OPERATOR');
+    // Requested RMO is ignored when memberships cannot use it.
     assert.equal(pickAppMode(operatorOnly, 'OPERATOR', 'RMO'), 'OPERATOR');
   });
 

@@ -49,8 +49,10 @@ Operators cannot create companies (OPERATOR mode → 401 on onboarding; operator
 
 ## UI
 
-- **Roles** → `/dashboard/roles` — matrix + team roster; link to **Add company**
-- **Onboarding** → `/dashboard/onboarding` — portfolio company switcher, **Add company**, stepped edit wizard
+- **Public RMO signup** → `/onboarding` — confirm “I am the RMO”, create Auth credentials + first company, assign RMO role (not chosen at login)
+- **Login** → `/` — email/password only; portal (RMO vs CEO) comes from memberships
+- **Roles** → `/dashboard/roles` — **Add CEO** (invite/create OPERATOR) + other roles; link to **Add company**
+- **Onboarding** → `/dashboard/onboarding` — portfolio company switcher, **Add company**, stepped edit wizard (requires RMO session)
 
 ## Pilot roster note
 

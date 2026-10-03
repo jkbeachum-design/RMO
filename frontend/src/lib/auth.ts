@@ -263,8 +263,7 @@ async function resolveAppUserAfterAuth(
 
 export async function authenticateUser(
   emailRaw: string,
-  password: string,
-  requestedMode?: AppMode
+  password: string
 ): Promise<{ user: SessionUser } | { error: string; status: number }> {
   const email = emailRaw.trim().toLowerCase();
   if (!email || !password) {
@@ -311,14 +310,14 @@ export async function authenticateUser(
   const accountRole =
     (String(user.role || 'OPERATOR').toUpperCase() as UserRole) || 'OPERATOR';
 
+  // Portal (RMO dashboard vs CEO /operator) comes from memberships, not login choice.
   return {
     user: buildSessionUser({
       userId: user.id,
       email: user.user_email,
       name: user.user_name || user.user_email,
       accountRole,
-      memberships,
-      requestedMode
+      memberships
     })
   };
 }

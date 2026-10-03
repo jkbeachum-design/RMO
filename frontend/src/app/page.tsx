@@ -6,11 +6,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialMode = searchParams.get('mode') === 'operator' ? 'OPERATOR' : 'RMO';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'RMO' | 'OPERATOR'>(initialMode);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +20,7 @@ function LoginForm() {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, mode })
+      body: JSON.stringify({ email, password })
     });
 
     const data = await res.json();
@@ -33,7 +31,7 @@ function LoginForm() {
       return;
     }
 
-    router.push(data.user?.mode === 'OPERATOR' || mode === 'OPERATOR' ? '/operator' : '/dashboard');
+    router.push(data.user?.mode === 'OPERATOR' ? '/operator' : '/dashboard');
     router.refresh();
   }
 
@@ -63,27 +61,6 @@ function LoginForm() {
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-4">
-          <div className="grid grid-cols-2 gap-2 rounded border border-white/15 p-1">
-            <button
-              type="button"
-              onClick={() => setMode('RMO')}
-              className={`rounded px-3 py-2 text-sm ${
-                mode === 'RMO' ? 'bg-white text-[#0f2a2a]' : 'text-teal-100 hover:bg-white/10'
-              }`}
-            >
-              RMO
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('OPERATOR')}
-              className={`rounded px-3 py-2 text-sm ${
-                mode === 'OPERATOR' ? 'bg-white text-[#0f2a2a]' : 'text-teal-100 hover:bg-white/10'
-              }`}
-            >
-              CEO
-            </button>
-          </div>
-
           <label className="block text-sm">
             <span className="mb-1 block text-teal-100/70">Email</span>
             <input
@@ -118,6 +95,11 @@ function LoginForm() {
           {searchParams.get('reset') === '1' ? (
             <p className="text-sm text-teal-200">Password updated. Sign in with your new password.</p>
           ) : null}
+          {searchParams.get('setup') === '1' ? (
+            <p className="text-sm text-teal-200">
+              RMO account ready. Sign in with the email and password you just created.
+            </p>
+          ) : null}
 
           <button
             type="submit"
@@ -129,7 +111,11 @@ function LoginForm() {
         </form>
 
         <p className="mt-6 text-xs text-teal-100/60">
-          Accounts are company-scoped. Contact your RMO admin if you need access to another license.
+          Setting up a new company?{' '}
+          <a href="/onboarding" className="text-teal-300 underline hover:text-teal-200">
+            Start as RMO
+          </a>
+          . Role access comes from your company membership — you do not pick RMO or CEO at sign-in.
         </p>
       </div>
     </div>

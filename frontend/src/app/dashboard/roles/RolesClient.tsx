@@ -70,8 +70,7 @@ export default function RolesClient({ userName }: { userName: string }) {
     void load();
   }, [load]);
 
-  async function onAdd(e: FormEvent) {
-    e.preventDefault();
+  async function inviteMember(inviteRole: UserRole) {
     if (!licenseId || !email) return;
     setSaving(true);
     setError('');
@@ -85,7 +84,7 @@ export default function RolesClient({ userName }: { userName: string }) {
           licenseId,
           email,
           name: name || undefined,
-          role
+          role: inviteRole
         })
       });
       const data = await res.json();
@@ -94,8 +93,8 @@ export default function RolesClient({ userName }: { userName: string }) {
       setName('');
       setMessage(
         data.temporary_password
-          ? `Member added. Temporary Supabase Auth password (share once): ${data.temporary_password}`
-          : 'Member added / invited (they already have Auth credentials).'
+          ? `${displayRoleLabel(inviteRole)} added. Temporary Supabase Auth password (share once): ${data.temporary_password}`
+          : `${displayRoleLabel(inviteRole)} added / invited (they already have Auth credentials).`
       );
       await load(licenseId);
     } catch (err) {
@@ -103,6 +102,17 @@ export default function RolesClient({ userName }: { userName: string }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onAdd(e: FormEvent) {
+    e.preventDefault();
+    await inviteMember(role);
+  }
+
+  async function onAddCeo(e: FormEvent) {
+    e.preventDefault();
+    setRole('OPERATOR');
+    await inviteMember('OPERATOR');
   }
 
   async function onChangeRole(membershipId: string, next: UserRole) {
@@ -156,8 +166,9 @@ export default function RolesClient({ userName }: { userName: string }) {
           <div>
             <h1 className="font-serif text-3xl text-slate-900">Roles & team</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Beyond RMO/CEO: ADMIN shares the RMO dashboard; PM and Foreman use the CEO
-              portal. Membership is always company-scoped. Add another CSLB company from Onboarding.
+              As RMO, invite or create the CEO you manage for this company. CEOs only use the CEO
+              portal (/operator). ADMIN shares the RMO dashboard; PM and Foreman also use the CEO
+              portal. Membership is always company-scoped.
             </p>
           </div>
           <a
@@ -314,49 +325,94 @@ export default function RolesClient({ userName }: { userName: string }) {
           ) : null}
 
           {canManage ? (
-            <form onSubmit={onAdd} className="grid max-w-2xl gap-3 sm:grid-cols-2">
-              <label className="block text-sm">
-                Email
-                <input
-                  type="email"
-                  required
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm">
-                Name (optional)
-                <input
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </label>
-              <label className="block text-sm">
-                Role
-                <select
-                  className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as UserRole)}
-                >
-                  {ALL_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {displayRoleLabel(r)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex items-end">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="rounded bg-[#0f2a2a] px-4 py-2 text-sm font-medium text-white hover:bg-[#164040] disabled:opacity-50"
-                >
-                  {saving ? 'Saving…' : 'Invite / add member'}
-                </button>
-              </div>
-            </form>
+            <div className="space-y-6">
+              <form
+                onSubmit={onAddCeo}
+                className="grid max-w-2xl gap-3 rounded border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2"
+              >
+                <div className="sm:col-span-2">
+                  <h3 className="font-medium text-slate-900">Add CEO</h3>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Creates or invites a company-scoped CEO (stored role OPERATOR). They sign in
+                    with email/password and land on the CEO portal — not the RMO dashboard.
+                  </p>
+                </div>
+                <label className="block text-sm">
+                  CEO email
+                  <input
+                    type="email"
+                    required
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  Name (optional)
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </label>
+                <div className="flex items-end sm:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded bg-[#0f2a2a] px-4 py-2 text-sm font-medium text-white hover:bg-[#164040] disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Invite / create CEO'}
+                  </button>
+                </div>
+              </form>
+
+              <form onSubmit={onAdd} className="grid max-w-2xl gap-3 sm:grid-cols-2">
+                <p className="sm:col-span-2 text-sm font-medium text-slate-800">
+                  Add other roles
+                </p>
+                <label className="block text-sm">
+                  Email
+                  <input
+                    type="email"
+                    required
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  Name (optional)
+                  <input
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  Role
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as UserRole)}
+                  >
+                    {ALL_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {displayRoleLabel(r)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Invite / add member'}
+                  </button>
+                </div>
+              </form>
+            </div>
           ) : (
             <p className="text-sm text-slate-500">
               Only RMO or ADMIN memberships can change the team for this company.
