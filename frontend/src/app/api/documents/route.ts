@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { COMPLIANCE_DOCUMENTS_BUCKET } from '@/lib/storagePaths';
 import { loadVaultDocuments } from '@/lib/vaultDocuments';
 
-const BUCKET = process.env.STORAGE_BUCKET || 'compliance-documents';
 const DOC_TYPES = new Set(['COI', 'PERMIT', 'PHOTO', 'OTHER']);
 
 export async function GET(req: Request) {
@@ -70,10 +70,13 @@ export async function POST(req: Request) {
   const storagePath = `${resolved.license.license_number}/vault/${Date.now()}-${safeName}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, buffer, {
-    contentType: file.type || 'application/octet-stream',
-    upsert: false
-  });
+  // Service-role upload works with a private bucket (bypasses storage RLS).
+  const { error: uploadError } = await supabase.storage
+    .from(COMPLIANCE_DOCUMENTS_BUCKET)
+    .upload(storagePath, buffer, {
+      contentType: file.type || 'application/octet-stream',
+      upsert: false
+    });
 
   if (uploadError) {
     return NextResponse.json(
@@ -82,19 +85,16 @@ export async function POST(req: Request) {
     );
   }
 
-  const { data: publicUrl } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
-  const fileUrl = publicUrl?.publicUrl;
-  if (!fileUrl) {
-    return NextResponse.json({ error: 'Could not resolve public URL' }, { status: 500 });
-  }
-
+  // Persist object path only — never a permanent public URL.
+  // file_url mirrors storage_path for pre-migration NOT NULL compatibility;
+  // migration 010 nulls file_url once storage_path is backfilled.
   const { data, error } = await supabase
     .from('documents')
     .insert({
       license_id: resolved.license.id,
       title,
       doc_type: docType,
-      file_url: fileUrl,
+      file_url: storagePath,
       storage_path: storagePath,
       expires_on: expiresOn,
       related_name: relatedName,

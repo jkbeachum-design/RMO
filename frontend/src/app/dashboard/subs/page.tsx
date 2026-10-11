@@ -7,6 +7,7 @@ import LicenseSwitcher from '@/components/LicenseSwitcher';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { loadMemberships, membershipLicenseIds, resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { toFileAccessHref } from '@/lib/storagePaths';
 import type { License } from '@/lib/types';
 
 type SubRow = {
@@ -103,8 +104,7 @@ export default async function DashboardSubsPage({
           </thead>
           <tbody>
             {list.map((s) => {
-              const coiUrl =
-                typeof s.notes === 'string' && s.notes.startsWith('http') ? s.notes : null;
+              const coiUrl = toFileAccessHref(s.notes);
               return (
                 <tr key={s.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-3">

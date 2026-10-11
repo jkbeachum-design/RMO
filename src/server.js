@@ -54,6 +54,88 @@ const upload = multer({
 
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'compliance-documents';
 
+/**
+ * Path helpers — keep in sync with frontend/src/lib/storagePaths.ts.
+ * Always validate the FINAL decoded path; never trust a pre-decode `..` check.
+ */
+function fullyDecodeURIComponent(input) {
+  let current = input;
+  for (let i = 0; i < 5; i++) {
+    try {
+      const next = decodeURIComponent(current);
+      if (next === current) return current;
+      current = next;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function sanitizeStorageObjectPath(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes('\\') || trimmed.includes('\0')) return null;
+
+  const decoded = fullyDecodeURIComponent(trimmed);
+  if (decoded == null) return null;
+  if (decoded.includes('%')) return null;
+  if (decoded.includes('\\')) return null;
+  if (decoded.startsWith('/')) return null;
+  if (/[\u0000-\u001f\u007f]/.test(decoded)) return null;
+
+  const segments = decoded.split('/');
+  if (segments.length < 2) return null;
+  for (const seg of segments) {
+    if (!seg || seg === '.' || seg === '..') return null;
+  }
+  return segments.join('/');
+}
+
+/** Derive bucket object path from a public/signed URL or return a raw path as-is. */
+function toComplianceStoragePath(value) {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const markers = [
+    `/storage/v1/object/public/${STORAGE_BUCKET}/`,
+    `/storage/v1/object/sign/${STORAGE_BUCKET}/`,
+    `/storage/v1/object/authenticated/${STORAGE_BUCKET}/`
+  ];
+  for (const marker of markers) {
+    const idx = trimmed.indexOf(marker);
+    if (idx !== -1) {
+      const rest = trimmed.slice(idx + marker.length).split('?')[0];
+      return sanitizeStorageObjectPath(rest);
+    }
+  }
+
+  if (trimmed.startsWith('/api/files')) {
+    try {
+      const url = new URL(trimmed, 'http://local.invalid');
+      const p = url.searchParams.get('path');
+      if (!p) return null;
+      return sanitizeStorageObjectPath(p);
+    } catch {
+      return null;
+    }
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) return null;
+  return sanitizeStorageObjectPath(trimmed);
+}
+
+/** Prefer storage path for our bucket; keep external http(s) URLs unchanged. */
+function normalizeStoredFileRef(value) {
+  if (!value || typeof value !== 'string') return null;
+  const path = toComplianceStoragePath(value);
+  if (path) return path;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 const supabase =
   isConfigured(process.env.SUPABASE_URL) && isConfigured(process.env.SUPABASE_KEY)
     ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
@@ -646,7 +728,7 @@ async function upsertSubcontractor(licenseId, subData) {
 
   const today = new Date().toISOString().split('T')[0];
   const coiDate = subData.coi_expiration_date || null;
-  const coiUrl = subData.coi_document_url || null;
+  const coiUrl = normalizeStoredFileRef(subData.coi_document_url || subData.notes || null);
   const coiCurrent = Boolean(coiUrl && coiDate && coiDate >= today);
 
   const row = {
@@ -659,8 +741,8 @@ async function upsertSubcontractor(licenseId, subData) {
     trade: subData.trade || null,
     coi_expiration_date: coiDate,
     coi_verified: coiCurrent,
-    // Persist COI file URL in notes until a dedicated column exists
-    notes: coiUrl || subData.notes || null,
+    // Persist COI storage path (or external URL) in notes until a dedicated column exists
+    notes: coiUrl,
     cslb_verified: false,
     updated_at: new Date().toISOString()
   };
@@ -943,6 +1025,7 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
       return res.status(404).json({ error: 'License not found', licenseId });
     }
 
+    // Store object paths only (private bucket). UI opens via /api/files signed redirects.
     const fileUrls = { cois: [], permits: [], photos: [] };
     const coiBySubIndex = {};
 
@@ -950,6 +1033,7 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
       const safeName = String(file.originalname || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_');
       const path = `${license.license_number}/${Date.now()}-${safeName}`;
 
+      // Service-role upload works with a private bucket (bypasses storage RLS).
       const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
         .upload(path, file.buffer, {
@@ -962,19 +1046,15 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
         continue;
       }
 
-      const { data: publicUrl } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-      const url = publicUrl?.publicUrl;
-      if (!url) continue;
-
       if (file.fieldname === 'permits') {
-        fileUrls.permits.push(url);
+        fileUrls.permits.push(path);
       } else if (file.fieldname === 'photos') {
-        fileUrls.photos.push(url);
+        fileUrls.photos.push(path);
       } else if (file.fieldname === 'cois') {
-        fileUrls.cois.push({ company_name: null, url });
+        fileUrls.cois.push({ company_name: null, storage_path: path, url: path });
       } else if (/^coi_\d+$/.test(file.fieldname)) {
         const idx = Number(file.fieldname.split('_')[1]);
-        coiBySubIndex[idx] = url;
+        coiBySubIndex[idx] = path;
       }
     }
 
@@ -1017,10 +1097,12 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
     const namedSubs = subcontractorsRaw.filter((s) => s && (s.id || s.company || s.company_name));
     const subcontractorsData = namedSubs.map((s, idx) => {
       const company = s.company_name || s.company;
-      const coiUrl = coiBySubIndex[idx] || s.coi_document_url || s.coiDocumentUrl || null;
+      const coiRef = normalizeStoredFileRef(
+        coiBySubIndex[idx] || s.coi_document_url || s.coiDocumentUrl || null
+      );
       const coiDate = s.coi_expiration_date || s.coiExpiration || null;
-      if (coiUrl) {
-        fileUrls.cois.push({ company_name: company, url: coiUrl });
+      if (coiRef) {
+        fileUrls.cois.push({ company_name: company, storage_path: coiRef, url: coiRef });
       }
       return {
         id: s.id || null,
@@ -1031,8 +1113,8 @@ app.post('/api/submit-report', upload.any(), async (req, res) => {
         cslb_license_number: s.cslb_license_number || s.cslbLicense || null,
         trade: s.trade || null,
         coi_expiration_date: coiDate,
-        coi_document_url: coiUrl,
-        coi_current: Boolean(coiUrl && coiDate && coiDate >= today),
+        coi_document_url: coiRef,
+        coi_current: Boolean(coiRef && coiDate && coiDate >= today),
         cslb_verified: false
       };
     });

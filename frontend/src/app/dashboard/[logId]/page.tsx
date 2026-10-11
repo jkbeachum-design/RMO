@@ -7,6 +7,7 @@ import ReviewActions from '@/components/ReviewActions';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { assertLogAccess } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { toFileAccessHref } from '@/lib/storagePaths';
 import type { ComplianceLog, ExtractedData, License } from '@/lib/types';
 
 export default async function LogDetailPage({
@@ -127,10 +128,9 @@ export default async function LogDetailPage({
                 <ul className="space-y-2 text-sm">
                   {extracted.subcontractors.map((s, i) => {
                     const today = new Date().toISOString().split('T')[0];
+                    const coiHref = toFileAccessHref(s.coi_document_url);
                     const coiOk = Boolean(
-                      s.coi_document_url &&
-                        s.coi_expiration_date &&
-                        s.coi_expiration_date >= today
+                      coiHref && s.coi_expiration_date && s.coi_expiration_date >= today
                     );
                     return (
                       <li key={i} className="flex flex-wrap items-center gap-2">
@@ -145,9 +145,9 @@ export default async function LogDetailPage({
                           {s.cslb_license_number || 'no CSLB #'}
                           {s.coi_expiration_date ? ` · COI ${s.coi_expiration_date}` : ''}
                         </span>
-                        {s.coi_document_url ? (
+                        {coiHref ? (
                           <a
-                            href={s.coi_document_url}
+                            href={coiHref}
                             target="_blank"
                             rel="noreferrer"
                             className="text-teal-800 hover:underline"
@@ -172,15 +172,20 @@ export default async function LogDetailPage({
                 </h3>
                 <ul className="space-y-1 text-sm">
                   {(extracted.file_urls.cois || []).map((item, i) => {
-                    const url = typeof item === 'string' ? item : item.url;
+                    const ref =
+                      typeof item === 'string'
+                        ? item
+                        : item.storage_path || item.url || null;
+                    const href = toFileAccessHref(ref);
                     const label =
                       typeof item === 'string'
                         ? `COI ${i + 1}`
                         : `COI${item.company_name ? ` · ${item.company_name}` : ` ${i + 1}`}`;
+                    if (!href) return null;
                     return (
                       <li key={`coi-${i}`}>
                         <a
-                          href={url}
+                          href={href}
                           target="_blank"
                           rel="noreferrer"
                           className="text-teal-800 hover:underline"
@@ -190,30 +195,38 @@ export default async function LogDetailPage({
                       </li>
                     );
                   })}
-                  {(extracted.file_urls.permits || []).map((url, i) => (
-                    <li key={`permit-${i}`}>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-teal-800 hover:underline"
-                      >
-                        Permit {i + 1}
-                      </a>
-                    </li>
-                  ))}
-                  {(extracted.file_urls.photos || []).map((url, i) => (
-                    <li key={`photo-${i}`}>
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-teal-800 hover:underline"
-                      >
-                        Photo {i + 1}
-                      </a>
-                    </li>
-                  ))}
+                  {(extracted.file_urls.permits || []).map((url, i) => {
+                    const href = toFileAccessHref(url);
+                    if (!href) return null;
+                    return (
+                      <li key={`permit-${i}`}>
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-teal-800 hover:underline"
+                        >
+                          Permit {i + 1}
+                        </a>
+                      </li>
+                    );
+                  })}
+                  {(extracted.file_urls.photos || []).map((url, i) => {
+                    const href = toFileAccessHref(url);
+                    if (!href) return null;
+                    return (
+                      <li key={`photo-${i}`}>
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-teal-800 hover:underline"
+                        >
+                          Photo {i + 1}
+                        </a>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : null}

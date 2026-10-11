@@ -177,7 +177,7 @@ export default function SubEditor({
               value={values.coi_document_url}
               onChange={(e) => setValues({ ...values, coi_document_url: e.target.value })}
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-              placeholder="https://… (or upload via Vault / report)"
+              placeholder="Storage path or external URL (prefer Vault / report upload)"
             />
           </label>
         </div>

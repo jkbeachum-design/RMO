@@ -53,7 +53,11 @@ export type ExtractedData = {
     permit_status?: string;
   }>;
   file_urls?: {
-    cois?: Array<string | { company_name?: string | null; url: string }>;
+    /** Object path or legacy public URL; UI resolves via /api/files. */
+    cois?: Array<
+      | string
+      | { company_name?: string | null; url?: string; storage_path?: string }
+    >;
     permits?: string[];
     photos?: string[];
   };

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { toFileAccessHref } from '@/lib/storagePaths';
 
 /** Membership-scoped projects + subcontractors for the structured PWA form. */
 export async function GET(req: Request) {
@@ -40,8 +41,8 @@ export async function GET(req: Request) {
 
   const enrichedSubs = (subcontractors || []).map((s) => ({
     ...s,
-    coi_document_url:
-      typeof s.notes === 'string' && s.notes.startsWith('http') ? s.notes : null
+    // Authorized open href (or external URL) — never a permanent public storage link
+    coi_document_url: toFileAccessHref(s.notes)
   }));
 
   return NextResponse.json({
