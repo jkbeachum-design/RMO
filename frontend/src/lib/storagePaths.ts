@@ -12,30 +12,93 @@ const PUBLIC_MARKER = `/storage/v1/object/public/${COMPLIANCE_DOCUMENTS_BUCKET}/
 const SIGN_MARKER = `/storage/v1/object/sign/${COMPLIANCE_DOCUMENTS_BUCKET}/`;
 const AUTH_MARKER = `/storage/v1/object/authenticated/${COMPLIANCE_DOCUMENTS_BUCKET}/`;
 
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+
 function stripQuery(path: string): string {
   return path.split('?')[0] || path;
 }
 
 /**
+ * Decode URI encoding until stable. Rejects malformed sequences and
+ * excessive nesting (e.g. %252e → %2e → .).
+ */
+export function fullyDecodeURIComponent(input: string): string | null {
+  let current = input;
+  for (let i = 0; i < 5; i++) {
+    try {
+      const next = decodeURIComponent(current);
+      if (next === current) return current;
+      current = next;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Validate and canonicalize a storage object path AFTER all decoding.
+ * Rejects traversal (`.`, `..`, empty segments), backslashes, absolute paths,
+ * control characters, and leftover percent-encoding.
+ */
+export function sanitizeStorageObjectPath(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  // Reject opaque backslashes before decode (also caught after for %5c)
+  if (trimmed.includes('\\') || trimmed.includes('\0')) return null;
+
+  const decoded = fullyDecodeURIComponent(trimmed);
+  if (decoded == null) return null;
+
+  // Final form must not retain encoding artifacts or absolute/Windows paths
+  if (decoded.includes('%')) return null;
+  if (decoded.includes('\\')) return null;
+  if (decoded.startsWith('/')) return null;
+  if (CONTROL_CHARS.test(decoded)) return null;
+
+  const segments = decoded.split('/');
+  if (segments.length < 2) return null;
+  for (const seg of segments) {
+    if (!seg || seg === '.' || seg === '..') return null;
+  }
+
+  return segments.join('/');
+}
+
+/**
+ * Encode each path segment for Supabase Storage APIs so `..` / special
+ * characters cannot be collapsed by intermediate HTTP clients.
+ */
+export function encodeStorageObjectPath(path: string): string {
+  return path
+    .split('/')
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+}
+
+/**
  * Derive a compliance-documents object path from a public/signed URL,
  * `/api/files?path=…` href, or a raw storage path.
- * Returns null for external URLs or invalid values.
+ * Returns null for external URLs, traversal, or invalid values.
+ *
+ * Every branch sanitizes the FINAL decoded path (never trust pre-decode checks).
  */
 export function extractComplianceStoragePath(
   value: string | null | undefined
 ): string | null {
   if (!value || typeof value !== 'string') return null;
   const trimmed = value.trim();
-  if (!trimmed || trimmed.includes('..')) return null;
+  if (!trimmed) return null;
 
   if (trimmed.startsWith('/api/files')) {
     try {
       const url = new URL(trimmed, 'http://local.invalid');
       const p = url.searchParams.get('path');
       if (!p) return null;
-      const decoded = decodeURIComponent(p).trim();
-      if (!decoded || decoded.includes('..') || decoded.startsWith('/')) return null;
-      return decoded;
+      // searchParams already decodes once; sanitize fully-decodes + validates
+      return sanitizeStorageObjectPath(p);
     } catch {
       return null;
     }
@@ -45,18 +108,21 @@ export function extractComplianceStoragePath(
     const idx = trimmed.indexOf(marker);
     if (idx !== -1) {
       const rest = stripQuery(trimmed.slice(idx + marker.length));
-      try {
-        return decodeURIComponent(rest);
-      } catch {
-        return rest;
-      }
+      return sanitizeStorageObjectPath(rest);
     }
   }
 
   // Raw storage path: license_number/...
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) return null;
-  if (!trimmed.includes('/')) return null;
-  return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return null;
+  return sanitizeStorageObjectPath(trimmed);
+}
+
+/**
+ * Resolve a `/api/files` query `path` param the same way the route does.
+ * Covers raw paths and full public/signed URLs passed as the path value.
+ */
+export function resolveFilesApiPath(pathParam: string | null | undefined): string | null {
+  return extractComplianceStoragePath(pathParam);
 }
 
 /** App-relative href that redirects to a fresh signed URL after authz. */
@@ -85,6 +151,17 @@ export function normalizeStoredFileRef(value: string | null | undefined): string
 
 /** License number prefix used for membership checks on object paths. */
 export function licenseNumberFromStoragePath(path: string): string | null {
-  const first = path.split('/').filter(Boolean)[0];
-  return first || null;
+  const sanitized = sanitizeStorageObjectPath(path);
+  if (!sanitized) return null;
+  return sanitized.split('/')[0] || null;
+}
+
+/**
+ * True when the sanitized path is under the given license number prefix.
+ * Uses the final path only (never a pre-normalization prefix).
+ */
+export function pathBelongsToLicense(path: string, licenseNumber: string): boolean {
+  const sanitized = sanitizeStorageObjectPath(path);
+  if (!sanitized || !licenseNumber) return false;
+  return sanitized.startsWith(`${licenseNumber}/`);
 }

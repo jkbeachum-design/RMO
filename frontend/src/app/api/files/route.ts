@@ -5,8 +5,10 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import {
   COMPLIANCE_DOCUMENTS_BUCKET,
   SIGNED_URL_TTL_SECONDS,
-  extractComplianceStoragePath,
-  licenseNumberFromStoragePath
+  encodeStorageObjectPath,
+  licenseNumberFromStoragePath,
+  pathBelongsToLicense,
+  resolveFilesApiPath
 } from '@/lib/storagePaths';
 
 /**
@@ -21,8 +23,9 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const rawPath = searchParams.get('path');
-  const storagePath = extractComplianceStoragePath(rawPath || '');
+  // searchParams.get already URL-decodes once; resolveFilesApiPath fully decodes
+  // and rejects traversal / encoding tricks before any authz or storage call.
+  const storagePath = resolveFilesApiPath(searchParams.get('path'));
   if (!storagePath) {
     return NextResponse.json({ error: 'Invalid or missing path' }, { status: 400 });
   }
@@ -38,15 +41,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
   }
 
-  // Defense in depth: ensure path still starts with the resolved license number
-  if (!storagePath.startsWith(`${resolved.license.license_number}/`)) {
+  // Re-check on the FINAL sanitized path (not a pre-decode prefix).
+  if (!pathBelongsToLicense(storagePath, resolved.license.license_number)) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
   }
 
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.storage
     .from(COMPLIANCE_DOCUMENTS_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
+    .createSignedUrl(encodeStorageObjectPath(storagePath), SIGNED_URL_TTL_SECONDS);
 
   if (error || !data?.signedUrl) {
     return NextResponse.json(

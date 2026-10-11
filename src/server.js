@@ -54,11 +54,50 @@ const upload = multer({
 
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'compliance-documents';
 
+/**
+ * Path helpers — keep in sync with frontend/src/lib/storagePaths.ts.
+ * Always validate the FINAL decoded path; never trust a pre-decode `..` check.
+ */
+function fullyDecodeURIComponent(input) {
+  let current = input;
+  for (let i = 0; i < 5; i++) {
+    try {
+      const next = decodeURIComponent(current);
+      if (next === current) return current;
+      current = next;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function sanitizeStorageObjectPath(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes('\\') || trimmed.includes('\0')) return null;
+
+  const decoded = fullyDecodeURIComponent(trimmed);
+  if (decoded == null) return null;
+  if (decoded.includes('%')) return null;
+  if (decoded.includes('\\')) return null;
+  if (decoded.startsWith('/')) return null;
+  if (/[\u0000-\u001f\u007f]/.test(decoded)) return null;
+
+  const segments = decoded.split('/');
+  if (segments.length < 2) return null;
+  for (const seg of segments) {
+    if (!seg || seg === '.' || seg === '..') return null;
+  }
+  return segments.join('/');
+}
+
 /** Derive bucket object path from a public/signed URL or return a raw path as-is. */
 function toComplianceStoragePath(value) {
   if (!value || typeof value !== 'string') return null;
   const trimmed = value.trim();
-  if (!trimmed || trimmed.includes('..')) return null;
+  if (!trimmed) return null;
 
   const markers = [
     `/storage/v1/object/public/${STORAGE_BUCKET}/`,
@@ -69,11 +108,7 @@ function toComplianceStoragePath(value) {
     const idx = trimmed.indexOf(marker);
     if (idx !== -1) {
       const rest = trimmed.slice(idx + marker.length).split('?')[0];
-      try {
-        return decodeURIComponent(rest);
-      } catch {
-        return rest;
-      }
+      return sanitizeStorageObjectPath(rest);
     }
   }
 
@@ -81,15 +116,15 @@ function toComplianceStoragePath(value) {
     try {
       const url = new URL(trimmed, 'http://local.invalid');
       const p = url.searchParams.get('path');
-      return p ? decodeURIComponent(p) : null;
+      if (!p) return null;
+      return sanitizeStorageObjectPath(p);
     } catch {
       return null;
     }
   }
 
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/')) return null;
-  if (!trimmed.includes('/')) return null;
-  return trimmed;
+  if (/^https?:\/\//i.test(trimmed)) return null;
+  return sanitizeStorageObjectPath(trimmed);
 }
 
 /** Prefer storage path for our bucket; keep external http(s) URLs unchanged. */
