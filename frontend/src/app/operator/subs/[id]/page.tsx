@@ -10,6 +10,7 @@ import {
   sessionHasLicenseId
 } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { normalizeStoredFileRef } from '@/lib/storagePaths';
 
 export default async function OperatorSubDetailPage({
   params,
@@ -61,7 +62,7 @@ export default async function OperatorSubDetailPage({
         .maybeSingle()
     ).data?.license_number ||
     '';
-  const coiUrl = typeof sub.notes === 'string' && sub.notes.startsWith('http') ? sub.notes : '';
+  const coiUrl = normalizeStoredFileRef(sub.notes) || '';
 
   return (
     <AppShell mode="OPERATOR" name={session.name}>

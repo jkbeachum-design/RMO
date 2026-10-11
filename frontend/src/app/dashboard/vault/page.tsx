@@ -5,6 +5,7 @@ import LicenseSwitcher from '@/components/LicenseSwitcher';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { loadMemberships, membershipLicenseIds, resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { toFileAccessHref } from '@/lib/storagePaths';
 import type { License } from '@/lib/types';
 
 function daysUntil(dateStr: string | null | undefined): number | null {
@@ -90,8 +91,7 @@ export default async function VaultPage({
 
   for (const sub of subcontractors || []) {
     const lic = licenseById.get(sub.license_id);
-    const url =
-      typeof sub.notes === 'string' && sub.notes.startsWith('http') ? sub.notes : null;
+    const url = toFileAccessHref(sub.notes);
     const days = daysUntil(sub.coi_expiration_date);
     let status: VaultItem['status'] = 'ok';
     if (!sub.coi_expiration_date && !url) status = 'missing';

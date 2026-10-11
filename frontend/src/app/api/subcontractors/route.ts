@@ -7,12 +7,17 @@ import {
   sessionHasLicenseId
 } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { isFileRef, normalizeStoredFileRef, toFileAccessHref } from '@/lib/storagePaths';
 
 const SUB_SELECT =
   'id, license_id, company_name, contact_name, phone, email, trade, cslb_license_number, coi_expiration_date, coi_verified, notes, updated_at, created_at';
 
-function coiUrlFromNotes(notes: string | null | undefined): string | null {
-  return typeof notes === 'string' && notes.startsWith('http') ? notes : null;
+function coiRefFromNotes(notes: string | null | undefined): string | null {
+  return isFileRef(notes) ? normalizeStoredFileRef(notes) : null;
+}
+
+function coiAccessHrefFromNotes(notes: string | null | undefined): string | null {
+  return toFileAccessHref(notes);
 }
 
 export async function GET(req: Request) {
@@ -50,7 +55,8 @@ export async function GET(req: Request) {
     },
     subcontractors: (data || []).map((s) => ({
       ...s,
-      coi_document_url: coiUrlFromNotes(s.notes)
+      coi_document_url: coiAccessHrefFromNotes(s.notes),
+      coi_storage_path: coiRefFromNotes(s.notes)
     }))
   });
 }
@@ -74,7 +80,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'License not found or access denied' }, { status: 403 });
   }
 
-  const coiUrl = String(body.coi_document_url || body.coiDocumentUrl || '').trim() || null;
+  const coiUrl =
+    normalizeStoredFileRef(String(body.coi_document_url || body.coiDocumentUrl || '').trim()) ||
+    null;
   const coiDate = String(body.coi_expiration_date || body.coiExpiration || '').trim() || null;
   const today = new Date().toISOString().split('T')[0];
 
@@ -106,7 +114,8 @@ export async function POST(req: Request) {
   return NextResponse.json({
     subcontractor: {
       ...data,
-      coi_document_url: coiUrlFromNotes(data.notes)
+      coi_document_url: coiAccessHrefFromNotes(data.notes),
+      coi_storage_path: coiRefFromNotes(data.notes)
     }
   });
 }
@@ -175,7 +184,8 @@ export async function PATCH(req: Request) {
   }
   if (body.coi_document_url !== undefined || body.coiDocumentUrl !== undefined) {
     updates.notes =
-      String(body.coi_document_url ?? body.coiDocumentUrl ?? '').trim() || null;
+      normalizeStoredFileRef(String(body.coi_document_url ?? body.coiDocumentUrl ?? '').trim()) ||
+      null;
   }
 
   if (updates.coi_expiration_date !== undefined || updates.notes !== undefined) {
@@ -183,7 +193,7 @@ export async function PATCH(req: Request) {
     const finalUrl =
       updates.notes !== undefined
         ? (updates.notes as string | null)
-        : coiUrlFromNotes(existing.notes);
+        : coiRefFromNotes(existing.notes);
     const finalDate =
       updates.coi_expiration_date !== undefined
         ? (updates.coi_expiration_date as string | null)
@@ -205,7 +215,8 @@ export async function PATCH(req: Request) {
   return NextResponse.json({
     subcontractor: {
       ...data,
-      coi_document_url: coiUrlFromNotes(data.notes)
+      coi_document_url: coiAccessHrefFromNotes(data.notes),
+      coi_storage_path: coiRefFromNotes(data.notes)
     }
   });
 }
