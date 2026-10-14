@@ -1,6 +1,7 @@
 import Navbar from './Navbar';
 import OnlineStatusBanner from './OnlineStatusBanner';
 import PendingReportsBanner from './PendingReportsBanner';
+import HelpChat from './HelpChat';
 import type { AppMode } from '@/lib/types';
 
 export default function AppShell({
@@ -18,7 +19,7 @@ export default function AppShell({
   return (
     <div className="min-h-screen bg-[#f4f6f5] text-slate-900">
       <Navbar mode={mode} name={name} />
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-4 pb-24 pt-8">
         {showOfflineChrome ? (
           <>
             <OnlineStatusBanner />
@@ -27,6 +28,7 @@ export default function AppShell({
         ) : null}
         {children}
       </main>
+      <HelpChat mode={mode} />
     </div>
   );
 }
