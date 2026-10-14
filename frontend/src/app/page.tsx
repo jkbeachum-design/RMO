@@ -111,11 +111,7 @@ function LoginForm() {
         </form>
 
         <p className="mt-6 text-xs text-teal-100/60">
-          Setting up a new company?{' '}
-          <a href="/onboarding" className="text-teal-300 underline hover:text-teal-200">
-            Start as RMO
-          </a>
-          . Role access comes from your company membership — you do not pick RMO or CEO at sign-in.
+          Access is by invitation. Role access comes from your company membership — you do not pick RMO or CEO at sign-in.
         </p>
       </div>
     </div>
