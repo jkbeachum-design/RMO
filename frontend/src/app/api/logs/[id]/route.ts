@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { assertLogAccess } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { redactLogForOperator } from '@/lib/operatorRedaction';
 
 export async function GET(
   _req: Request,
@@ -29,7 +30,7 @@ export async function GET(
     return NextResponse.json({ error: 'Log not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ log });
+  return NextResponse.json({ log: live.mode === 'RMO' ? log : redactLogForOperator(log) });
 }
 
 export async function PATCH(

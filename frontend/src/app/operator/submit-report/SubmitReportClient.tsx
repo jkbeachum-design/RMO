@@ -566,8 +566,8 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
       const closedCount = projects.filter((p) => p.closeOut || p.endDate).length;
       setMessage(
         `Report submitted. Log ID ${data.logId}${
-          data.risk_count ? ` · ${data.risk_count} risk flag(s)` : ''
-        }${closedCount ? ` · ${closedCount} project(s) closed out` : ''}. RMO will review shortly.`
+          closedCount ? ` · ${closedCount} project(s) closed out` : ''
+        }. Thanks!`
       );
       setTimeout(() => router.push('/operator/history'), 1400);
     } catch (err) {

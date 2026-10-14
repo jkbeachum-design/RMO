@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { resolveAccessibleLicense } from '@/lib/access';
+import { redactBackendResponseForOperator } from '@/lib/operatorRedaction';
 
 function backendHeaders(): Record<string, string> {
   const secret = process.env.RETELL_WEBHOOK_SECRET || process.env.RETELL_API_KEY || '';
@@ -58,10 +59,10 @@ export async function POST(req: Request) {
 
   if (!res.ok) {
     return NextResponse.json(
-      { error: 'Backend rejected report', details: parsed },
+      { error: 'Backend rejected report', details: redactBackendResponseForOperator(parsed) },
       { status: res.status }
     );
   }
 
-  return NextResponse.json(parsed);
+  return NextResponse.json(redactBackendResponseForOperator(parsed));
 }

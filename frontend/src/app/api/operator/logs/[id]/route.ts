@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { assertLogAccess } from '@/lib/access';
+import { getSupabaseAdmin } from '@/lib/supabase';
+import { redactBackendResponseForOperator } from '@/lib/operatorRedaction';
 
 function backendHeaders(): Record<string, string> {
   const secret = process.env.RETELL_WEBHOOK_SECRET || process.env.RETELL_API_KEY || '';
@@ -33,7 +35,21 @@ export async function PATCH(
     return NextResponse.json({ error: 'BACKEND_URL not configured' }, { status: 503 });
   }
 
-  const body = await req.json().catch(() => ({}));
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  // The CEO never sees audit_summary (RMO-only), so carry the stored one forward
+  // instead of letting the correction wipe it.
+  if (body.extracted_data && typeof body.extracted_data === 'object') {
+    const { data: existing } = await getSupabaseAdmin()
+      .from('compliance_logs')
+      .select('extracted_data')
+      .eq('id', params.id)
+      .single();
+    const prevSummary = (existing?.extracted_data as Record<string, unknown> | null)?.audit_summary;
+    const ed = { ...(body.extracted_data as Record<string, unknown>) };
+    delete ed.audit_summary;
+    if (prevSummary) ed.audit_summary = prevSummary;
+    body.extracted_data = ed;
+  }
   const res = await fetch(
     `${backend.replace(/\/$/, '')}/api/compliance-logs/${params.id}`,
     {
@@ -53,10 +69,10 @@ export async function PATCH(
 
   if (!res.ok) {
     return NextResponse.json(
-      { error: 'Backend rejected update', details: parsed },
+      { error: 'Backend rejected update', details: redactBackendResponseForOperator(parsed) },
       { status: res.status }
     );
   }
 
-  return NextResponse.json(parsed);
+  return NextResponse.json(redactBackendResponseForOperator(parsed));
 }

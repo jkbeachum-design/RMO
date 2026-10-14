@@ -4,6 +4,7 @@ import OperatorHistoryClient from '@/components/OperatorHistoryClient';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { redactLogsForOperator } from '@/lib/operatorRedaction';
 import type { ComplianceLog } from '@/lib/types';
 
 export default async function OperatorHistoryPage({
@@ -30,7 +31,7 @@ export default async function OperatorHistoryPage({
       .eq('license_id', resolved.license.id)
       .order('created_at', { ascending: false })
       .limit(30);
-    logs = (data || []) as ComplianceLog[];
+    logs = redactLogsForOperator((data || []) as ComplianceLog[]);
   }
 
   return (
