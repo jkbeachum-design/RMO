@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import Link from 'next/link';
-import { RiskFlagList } from '@/components/RiskFlagBadge';
 import { friendlyNetworkMessage } from '@/lib/offlineQueue';
 import type { ComplianceLog, ExtractedData } from '@/lib/types';
 
@@ -156,7 +155,7 @@ export default function OperatorHistoryClient({
       setLogs((prevLogs) =>
         prevLogs.map((l) => (l.id === editingLog.id ? (data.log as ComplianceLog) : l))
       );
-      setMessage('Report updated. Risk flags were recalculated.');
+      setMessage('Report updated.');
       setEditingId(null);
       setDraft(null);
       router.refresh();
@@ -172,8 +171,7 @@ export default function OperatorHistoryClient({
       <h1 className="font-serif text-4xl">Your reports</h1>
       <p className="mt-2 text-slate-600">
         Recent check-ins{entityName ? ` for ${entityName}` : ''}. Open{' '}
-        <strong>Edit report</strong> to fix typos or correct details — risk flags recalculate on
-        save.
+        <strong>Edit report</strong> to fix typos or correct details.
       </p>
 
       {message ? <p className="mt-4 text-sm text-teal-800">{message}</p> : null}
@@ -203,7 +201,7 @@ export default function OperatorHistoryClient({
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-2">
-                  <RiskFlagList riskFlags={log.risk_flags} />
+                  <span className="text-xs font-medium text-slate-500">Submitted</span>
                   {!isEditing ? (
                     <button
                       type="button"

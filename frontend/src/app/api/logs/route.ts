@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { resolveAccessibleLicense } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
+import { redactLogsForOperator } from '@/lib/operatorRedaction';
 
 export async function GET(req: Request) {
   const session = getSession();
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({
-    logs: logs || [],
+    logs: live.mode === 'RMO' ? logs || [] : redactLogsForOperator(logs),
     license: {
       id: resolved.license.id,
       license_number: resolved.license.license_number,
