@@ -30,6 +30,12 @@ const LICENSE_SELECT = [
  * create first company membership, return signed session + login credentials reminder.
  */
 export async function POST(req: Request) {
+  if (process.env.PUBLIC_SIGNUP_ENABLED !== 'true') {
+    return NextResponse.json(
+      { error: 'Public signup is disabled. Ask your RMO for an invitation.' },
+      { status: 403 }
+    );
+  }
   const existing = getSession();
   if (existing) {
     return NextResponse.json(
