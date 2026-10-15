@@ -3,6 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AppMode } from '@/lib/types';
 
+/** Strip simple markdown (bold/italics/headings/backticks) so answers read as plain text. */
+export function plainText(md: string): string {
+  return md
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/(^|[\s(])\*(?!\s)([^*\n]+?)\*(?=[\s).,!?:;]|$)/g, '$1$2')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[*]\s+/gm, '• ')
+    .replace(/`([^`]+)`/g, '$1');
+}
+
 type Turn = { role: 'user' | 'assistant'; content: string };
 
 export default function HelpChat({ mode }: { mode: AppMode }) {
@@ -81,7 +92,7 @@ export default function HelpChat({ mode }: { mode: AppMode }) {
                     t.role === 'user' ? 'ml-8 bg-teal-50 text-slate-900' : 'mr-8 bg-slate-100 text-slate-800'
                   }`}
                 >
-                  {t.content}
+                  {t.role === 'assistant' ? plainText(t.content) : t.content}
                 </div>
               ))}
               {busy ? <p className="text-slate-400">Thinking…</p> : null}
