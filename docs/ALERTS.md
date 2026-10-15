@@ -97,4 +97,4 @@ On every successful CEO report (`POST /api/operator/submit-report`), `notifyRmos
 - **Per-RMO settings:** `/dashboard/alerts` (RMO-only) → table `rmo_alert_settings` (migration 011). The ntfy token is write-only (never returned to the browser; column not readable by anon/authenticated). Digest on/off + hour are stored per license in `compliance_settings`.
 - **Env fallbacks:** `NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN`, `RMO_ALERT_EMAIL`.
 - **Test:** "Send test alert" → `POST /api/alerts/test` (RMO session only).
-- **Digest cron:** `frontend/vercel.json` runs `GET /api/jobs/digests?hourly=1` hourly with `Authorization: Bearer $CRON_SECRET`; each license is sent at its chosen PT hour.
+- **Digest cron:** `frontend/vercel.json` runs `GET /api/jobs/digests` once daily at 14:00 UTC (7 AM PDT / 6 AM PST; Vercel Hobby allows only daily crons). With a Pro plan, switch to `?hourly=1` + `0 * * * *` with `Authorization: Bearer $CRON_SECRET`; each license is sent at its chosen PT hour.
