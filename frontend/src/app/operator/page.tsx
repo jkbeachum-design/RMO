@@ -6,6 +6,9 @@ import {
 } from '@/lib/constants';
 import { getSession } from '@/lib/auth';
 
+/** Phone call-in (Retell) check-in is on hold. Set true to restore the call button + chooser. */
+const CALL_IN_ENABLED = false;
+
 export default function OperatorHomePage() {
   const session = getSession();
   if (!session) redirect('/');
@@ -21,6 +24,7 @@ export default function OperatorHomePage() {
         </p>
 
         <div className="mt-8 space-y-3">
+          {CALL_IN_ENABLED ? (
           <a
             href={`tel:${COMPLIANCE_PHONE}`}
             className="block bg-[#0f2a2a] px-4 py-4 text-center text-lg font-semibold text-white hover:bg-[#163838]"
@@ -30,10 +34,15 @@ export default function OperatorHomePage() {
               {COMPLIANCE_PHONE_DISPLAY}
             </span>
           </a>
+          ) : null}
 
           <a
             href="/operator/submit-report"
-            className="block border border-slate-300 bg-white px-4 py-4 text-center font-semibold text-slate-900 hover:bg-slate-50"
+            className={
+              CALL_IN_ENABLED
+                ? 'block border border-slate-300 bg-white px-4 py-4 text-center font-semibold text-slate-900 hover:bg-slate-50'
+                : 'block bg-[#0f2a2a] px-4 py-4 text-center text-lg font-semibold text-white hover:bg-[#163838]'
+            }
           >
             Submit structured report
           </a>
@@ -46,6 +55,7 @@ export default function OperatorHomePage() {
           </a>
         </div>
 
+        {CALL_IN_ENABLED ? (
         <div className="mt-8 border border-teal-800/20 bg-teal-50 p-4 text-sm text-slate-700">
           <p className="font-semibold text-slate-900">Not sure which to use?</p>
           <p className="mt-1">
@@ -55,8 +65,9 @@ export default function OperatorHomePage() {
             uploads.
           </p>
         </div>
+        ) : null}
 
-        <div className="mt-4 border border-slate-200 bg-white p-4 text-sm text-slate-700">
+        <div className="mt-8 border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <p className="font-semibold text-slate-900">Install on your phone</p>
           <p className="mt-1">
             Use your browser&apos;s <strong>Add to Home Screen</strong> / Install app action while

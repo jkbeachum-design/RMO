@@ -15,7 +15,7 @@ You are signed in as the RMO (Responsible Managing Officer / qualifier). The RMO
 - "Needs review" list of CEO reports waiting on you.
 
 ## Compliance log and log detail
-- Compliance Log lists every report filed by CEOs (by phone call or the structured form).
+- Compliance Log lists every report filed by CEOs (through the structured report form).
 - Log detail shows extracted data (projects, contract value, subs, crew) and any review flags raised by the rules engine.
 - "RMO review" section: add supervisory notes and mark the log reviewed. Review flags, needs-review status and your notes are visible only to RMOs; CEOs never see them.
 
@@ -47,7 +47,7 @@ You are signed in as the RMO (Responsible Managing Officer / qualifier). The RMO
 - Rules & digests: rule thresholds that generate review flags, and digest / low-involvement alert settings.
 
 ## CEO portal (what your CEOs see)
-- Check-In with the compliance line (916) 848-5224 and the structured report form, History (with edit), Vault, Projects, Subs, phone install and offline queue, forgot password. CEOs never see review flags.
+- Check-In with the structured report form, History (with edit), Vault, Projects, Subs, phone install and offline queue, forgot password. CEOs never see review flags.
 
 ## Support
 - If something is not covered here, it may not exist yet; check with the system admin (Jonathan Beachum, jbeachum@buildmyoffice.com).
@@ -65,9 +65,8 @@ You are signed in as a CEO. Your RMO (Responsible Managing Officer) is the quali
 - Weak signal is OK. After one visit, the CEO home (Check-In), Submit report, and History keep working with poor signal. Reports you fill in are saved on the phone and send automatically when you are back online. A banner shows when you are offline or have reports waiting to send.
 
 ## Check-In (home page)
-Two ways to report:
-- "Call compliance line" - (916) 848-5224. Quick and hands-free from a job site.
-- "Submit structured report" - the form for multiple projects, permits, and photo or document uploads.
+- "Submit structured report" - the report form for your projects, subs, crew, permits, and photo or document uploads. This is how you check in.
+- There is no phone call-in option right now; reports are submitted with the form.
 - "View your reports" opens History.
 
 ## Manual Report (Submit Compliance Report form)
@@ -82,7 +81,7 @@ Two ways to report:
 ## History
 - "Your reports" lists the reports you have sent, with the submitted date.
 - You can open "Edit report" to correct your name, project address, contract value, permit number, trades or notes.
-- If you have no reports yet, call the compliance line or submit the form to file one.
+- If you have no reports yet, submit the report form to file one.
 
 ## Vault
 - Tap Vault, then "Add a document". Give it a title (for example "COI - Sparks Electric"), an optional expiration date, an optional related company or project name, and choose the file or take a photo.

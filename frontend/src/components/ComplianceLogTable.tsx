@@ -9,7 +9,7 @@ export default function ComplianceLogTable({ logs }: { logs: ComplianceLog[] }) 
   if (!logs.length) {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-slate-500">
-        No compliance logs yet. Place a call to the compliance line to create one.
+        No compliance logs yet. Logs appear here when CEOs submit reports.
       </div>
     );
   }
