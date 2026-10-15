@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
+import SettingsBack from '@/components/SettingsBack';
 import { displayRoleLabel } from '@/lib/labels';
 import {
   ALL_ROLES,
@@ -32,6 +33,13 @@ const CAPABILITIES = Object.keys(CAPABILITY_LABELS) as Capability[];
 
 export default function RolesClient({ userName }: { userName: string }) {
   const [licenses, setLicenses] = useState<LicenseOption[]>([]);
+  const [myUserId, setMyUserId] = useState('');
+  useEffect(() => {
+    fetch('/api/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setMyUserId(d?.user?.userId || ''))
+      .catch(() => undefined);
+  }, []);
   const [licenseId, setLicenseId] = useState('');
   const [matrix, setMatrix] = useState<RoleDefinition[]>(ROLE_DEFINITIONS);
   const [members, setMembers] = useState<Member[]>([]);
@@ -139,8 +147,15 @@ export default function RolesClient({ userName }: { userName: string }) {
     }
   }
 
-  async function onRemove(membershipId: string) {
-    if (!confirm('Remove this membership?')) return;
+  async function onRemove(membershipId: string, who: string) {
+    const company = licenses.find((l) => l.id === licenseId);
+    const companyName = company ? `${company.entity_name || ''} (${company.license_number || ''})` : 'this license';
+    if (
+      !confirm(
+        `Remove ${who} from ${companyName}?\n\nThey will lose access to this company only. Their account stays active and any other companies are unaffected.`
+      )
+    )
+      return;
     setSaving(true);
     setError('');
     try {
@@ -161,10 +176,11 @@ export default function RolesClient({ userName }: { userName: string }) {
 
   return (
     <AppShell mode="RMO" name={userName}>
+      <SettingsBack href="/dashboard/settings" />
       <div className="space-y-10">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="font-serif text-3xl text-slate-900">Roles & team</h1>
+            <h1 className="font-serif text-3xl text-slate-900">Team &amp; CEOs</h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
               As RMO, invite or create the CEO you manage for this company. CEOs only use the CEO
               portal (/operator). ADMIN shares the RMO dashboard; PM and Foreman also use the CEO
@@ -287,14 +303,18 @@ export default function RolesClient({ userName }: { userName: string }) {
                       </td>
                       {canManage ? (
                         <td className="py-2">
+                          {m.user_id === myUserId ? (
+                            <span className="text-xs text-slate-400">You</span>
+                          ) : (
                           <button
                             type="button"
                             className="text-xs text-red-700 hover:underline"
                             disabled={saving}
-                            onClick={() => void onRemove(m.id)}
+                            onClick={() => void onRemove(m.id, m.name || m.email || 'this person')}
                           >
-                            Remove
+                            Remove from this license
                           </button>
+                          )}
                         </td>
                       ) : null}
                     </tr>

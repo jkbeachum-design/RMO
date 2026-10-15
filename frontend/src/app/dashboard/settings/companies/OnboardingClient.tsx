@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/AppShell';
+import SettingsBack from '@/components/SettingsBack';
 import { ONBOARDING_STEPS, type OnboardingStepId } from '@/lib/roles';
 
 type LicenseOption = { id: string; license_number?: string; entity_name?: string };
@@ -241,10 +242,11 @@ export default function OnboardingClient({ userName }: { userName: string }) {
 
   return (
     <AppShell mode="RMO" name={userName}>
+      <SettingsBack href="/dashboard/settings" />
       <div className="mx-auto max-w-3xl space-y-8">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="font-serif text-3xl text-slate-900">Company onboarding</h1>
+            <h1 className="font-serif text-3xl text-slate-900">Companies &amp; licenses</h1>
             <p className="mt-2 text-sm text-slate-600">
               You are signed in as RMO. Finish association docs, ownership, duty statement, and
               bonds for each company. When ready, invite the CEO from{' '}

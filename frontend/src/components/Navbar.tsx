@@ -17,10 +17,7 @@ const RMO_LINKS = [
   { href: '/dashboard/compliance-log', label: 'Compliance Log' },
   { href: '/dashboard/audit-report', label: 'Monthly Audit' },
   { href: '/dashboard/export', label: 'Export' },
-  { href: '/dashboard/settings', label: 'Rules' },
-  { href: '/dashboard/alerts', label: 'Alerts' },
-  { href: '/dashboard/roles', label: 'Roles' },
-  { href: '/dashboard/onboarding', label: 'Onboarding' }
+  { href: '/dashboard/settings', label: 'Settings' }
 ];
 
 const OPERATOR_LINKS = [
@@ -29,7 +26,8 @@ const OPERATOR_LINKS = [
   { href: '/operator/history', label: 'History' },
   { href: '/operator/vault', label: 'Vault' },
   { href: '/operator/projects', label: 'Projects' },
-  { href: '/operator/subs', label: 'Subs' }
+  { href: '/operator/subs', label: 'Subs' },
+  { href: '/operator/settings', label: 'Settings' }
 ];
 
 export default function Navbar({

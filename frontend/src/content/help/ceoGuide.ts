@@ -11,6 +11,7 @@ You are signed in as a CEO. Your RMO (Responsible Managing Officer) is the quali
 ## Signing in
 - Open rmo.buildmyoffice.com in Chrome and sign in with your email and password.
 - There is no sign-up button. Your account is created for you by your RMO.
+- To change your password while signed in, go to Settings, Account, Change password.
 - Forgot your password? On the sign-in page tap "Forgot password?", enter your email, then open the reset link that is emailed to you (check spam too). Set a new password and confirm it, then sign in.
 - "Log out" is in the top bar.
 
@@ -46,6 +47,13 @@ You are signed in as a CEO. Your RMO (Responsible Managing Officer) is the quali
 
 ## Subs
 - Subs lists your subcontractors. Add or edit: company name, contact name, phone, email, trade, CSLB number, COI expiration date, and COI document link.
+
+## Settings
+Open the menu (three-line button, top left on a phone) and tap Settings. It has four parts:
+- Account: your name (read-only; ask your RMO to change it), your sign-in email (read-only), and your phone number, which you can edit and save. Change password: enter your current password, then the new one twice (at least 8 characters). Log out is here too.
+- My company: your company name and CSLB license number, plus your RMO's name, phone and email. These details are managed by your RMO.
+- Phone app: install the site on your phone, see whether you are online, and see how many reports are waiting to send from this phone. If any are waiting and you have signal, tap "Send now".
+- Help & feedback: how to use the ? Help button, and buttons to text, call or email Jonathan Beachum.
 
 ## Help and feedback
 - For anything this guide does not cover, or if something looks broken, contact your RMO, Jonathan Beachum: text or call (916) 228-1776, or email jbeachum@buildmyoffice.com. A screenshot helps.

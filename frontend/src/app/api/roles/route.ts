@@ -126,6 +126,9 @@ export async function POST(req: NextRequest) {
       .eq('license_id', licenseId)
       .maybeSingle();
     if (!row) return NextResponse.json({ error: 'Membership not found' }, { status: 404 });
+    if (row.user_id === live.userId) {
+      return NextResponse.json({ error: 'You cannot remove yourself from a license' }, { status: 400 });
+    }
 
     if (row.role === 'RMO' || row.role === 'ADMIN') {
       const { data: managers } = await supabase
