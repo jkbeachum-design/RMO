@@ -62,8 +62,9 @@ async function sendEmail(to: string, subject: string, text: string) {
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.CRON_SECRET || process.env.DIGEST_SECRET;
+  const bearer = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
   const provided =
-    req.headers.get('x-cron-secret') || req.nextUrl.searchParams.get('secret') || '';
+    req.headers.get('x-cron-secret') || bearer || req.nextUrl.searchParams.get('secret') || '';
   const isCron = Boolean(secret && provided === secret);
 
   let allowedIds: string[] | null = null;
@@ -95,6 +96,10 @@ export async function POST(req: NextRequest) {
 
   const now = new Date();
   const results = [];
+  const hourlyCron = req.nextUrl.searchParams.get('hourly') === '1';
+  const currentPtHour = Number(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }).format(now)
+  );
 
   for (const license of licenses || []) {
     const { data: settingsRow } = await supabase
@@ -104,6 +109,8 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     const settings = settingsFromRow(settingsRow);
     if (!settings.digest_enabled && kind === 'MORNING') continue;
+    // Hourly Vercel cron: only send at each license's chosen hour (Pacific).
+    if (isCron && hourlyCron && settings.digest_hour_pt !== currentPtHour) continue;
 
     const sinceIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const [{ data: logs }, { data: activities }] = await Promise.all([
@@ -224,4 +231,14 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, kind, processed: results.length, results });
+}
+
+/** Vercel Cron issues GET with `Authorization: Bearer $CRON_SECRET`. GET is cron-only (no session-triggered sends). */
+export async function GET(req: NextRequest) {
+  const secret = process.env.CRON_SECRET || process.env.DIGEST_SECRET;
+  const bearer = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!secret || bearer !== secret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return POST(req);
 }
