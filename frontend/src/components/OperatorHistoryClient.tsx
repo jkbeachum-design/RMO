@@ -347,7 +347,7 @@ export default function OperatorHistoryClient({
           );
         })}
         {!logs.length ? (
-          <p className="text-slate-500">No reports yet. Call the compliance line to file one.</p>
+          <p className="text-slate-500">No reports yet. Use Manual Report to submit one.</p>
         ) : null}
       </div>
 

@@ -16,7 +16,7 @@ You are signed in as the RMO (Responsible Managing Officer / qualifier). The RMO
 - "Needs review" list of CEO reports waiting on you.
 
 ## Compliance log and log detail
-- Compliance Log lists every report filed by CEOs (by phone call or the structured form).
+- Compliance Log lists every report filed by CEOs (through the structured report form).
 - Log detail shows extracted data (projects, contract value, subs, crew) and any review flags raised by the rules engine.
 - "RMO review" section: add supervisory notes and mark the log reviewed. Review flags, needs-review status and your notes are visible only to RMOs; CEOs never see them.
 
@@ -48,7 +48,7 @@ You are signed in as the RMO (Responsible Managing Officer / qualifier). The RMO
 - Rules & digests: rule thresholds that generate review flags, and digest / low-involvement alert settings.
 
 ## CEO portal (what your CEOs see)
-- Check-In with the compliance line (916) 848-5224 and the structured report form, History (with edit), Vault, Projects, Subs, phone install and offline queue, forgot password. CEOs never see review flags.
+- Check-In with the structured report form, History (with edit), Vault, Projects, Subs, phone install and offline queue, forgot password. CEOs never see review flags.
 
 ## Support
 - If something is not covered here, it may not exist yet; check with the system admin (Jonathan Beachum, jbeachum@buildmyoffice.com).
