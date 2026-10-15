@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession, refreshSessionMemberships } from '@/lib/auth';
 import { resolveAccessibleLicense } from '@/lib/access';
 import { redactBackendResponseForOperator } from '@/lib/operatorRedaction';
+import { notifyRmosOfReport } from '@/lib/rmoAlerts';
 
 function backendHeaders(): Record<string, string> {
   const secret = process.env.RETELL_WEBHOOK_SECRET || process.env.RETELL_API_KEY || '';
@@ -62,6 +63,16 @@ export async function POST(req: Request) {
       { error: 'Backend rejected report', details: redactBackendResponseForOperator(parsed) },
       { status: res.status }
     );
+  }
+
+  // RMO alerts (ntfy + email). Never blocks or fails the CEO's submission; capped at 6s.
+  const logId =
+    parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>).logId : null;
+  if (typeof logId === 'string' && logId) {
+    await Promise.race([
+      notifyRmosOfReport(logId).catch(() => []),
+      new Promise((r) => setTimeout(r, 6000))
+    ]);
   }
 
   return NextResponse.json(redactBackendResponseForOperator(parsed));

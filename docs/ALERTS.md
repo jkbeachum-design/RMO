@@ -87,3 +87,14 @@ Morning digest + low-involvement alerts are configured under **Rules & digests**
 4. With Resend/Twilio configured → message delivered only to allowlisted (and not blocklisted) contacts
 5. With Eric as ADMIN and `ALERT_EMAIL_ALLOWLIST=jbeachum@buildmyoffice.com` → console shows Eric blocked; Jonathan still receives mail
 6. Run digest from Settings or `POST /api/jobs/digests` → console/email summary + optional low-involvement alert (filtered)
+
+## RMO report alerts (ntfy + email) — Next.js
+
+On every successful CEO report (`POST /api/operator/submit-report`), `notifyRmosOfReport` (`frontend/src/lib/rmoAlerts.ts`) alerts each RMO/ADMIN member of that license, capped at 6 s and never failing the CEO's submission.
+
+- **Phone:** ntfy (`POST {server}/{topic}`), Click opens `/dashboard/{logId}`. Flagged reports are high priority and list flags (RMO-only content).
+- **Email:** Resend, filtered by `ALERT_EMAIL_ALLOWLIST` / blocklist. Needs `RESEND_API_KEY` (+ `ALERT_FROM_EMAIL` on a verified domain).
+- **Per-RMO settings:** `/dashboard/alerts` (RMO-only) → table `rmo_alert_settings` (migration 011). The ntfy token is write-only (never returned to the browser; column not readable by anon/authenticated). Digest on/off + hour are stored per license in `compliance_settings`.
+- **Env fallbacks:** `NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN`, `RMO_ALERT_EMAIL`.
+- **Test:** "Send test alert" → `POST /api/alerts/test` (RMO session only).
+- **Digest cron:** `frontend/vercel.json` runs `GET /api/jobs/digests?hourly=1` hourly with `Authorization: Bearer $CRON_SECRET`; each license is sent at its chosen PT hour.

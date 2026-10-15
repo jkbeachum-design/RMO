@@ -18,6 +18,7 @@ const RMO_LINKS = [
   { href: '/dashboard/audit-report', label: 'Monthly Audit' },
   { href: '/dashboard/export', label: 'Export' },
   { href: '/dashboard/settings', label: 'Rules' },
+  { href: '/dashboard/alerts', label: 'Alerts' },
   { href: '/dashboard/roles', label: 'Roles' },
   { href: '/dashboard/onboarding', label: 'Onboarding' }
 ];
