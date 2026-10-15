@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { displayModeLabel } from '@/lib/labels';
 import type { AppMode } from '@/lib/types';
@@ -42,6 +42,35 @@ export default function Navbar({
   const router = useRouter();
   const links = mode === 'RMO' ? RMO_LINKS : OPERATOR_LINKS;
   const [canSwitch, setCanSwitch] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false);
+    }
+    function onPointer(e: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointer);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointer);
+    };
+  }, [menuOpen]);
+
+  function isActive(href: string) {
+    return (
+      pathname === href ||
+      (href !== '/dashboard' && href !== '/operator' && pathname.startsWith(href))
+    );
+  }
 
   useEffect(() => {
     fetch('/api/me')
@@ -75,19 +104,29 @@ export default function Navbar({
   }
 
   return (
-    <header className="border-b border-slate-200 bg-[#0f2a2a] text-white">
+    <header ref={menuRef} className="relative z-30 border-b border-slate-200 bg-[#0f2a2a] text-white">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-3">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 sm:gap-6">
+          <button
+            type="button"
+            className="-ml-1 inline-flex h-10 w-10 items-center justify-center rounded text-teal-50 hover:bg-white/10 sm:hidden"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            aria-controls="phone-nav"
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            {menuOpen ? (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            ) : (
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+            )}
+          </button>
           <Link href={mode === 'RMO' ? '/dashboard' : '/operator'} className="font-serif text-xl tracking-tight">
             RMO Compliance
           </Link>
           <nav className="hidden gap-1 sm:flex">
             {links.map((link) => {
-              const active =
-                pathname === link.href ||
-                (link.href !== '/dashboard' &&
-                  link.href !== '/operator' &&
-                  pathname.startsWith(link.href));
+              const active = isActive(link.href);
               return (
                 <Link
                   key={link.href}
@@ -125,6 +164,36 @@ export default function Navbar({
           </button>
         </div>
       </div>
+      {menuOpen ? (
+        <nav
+          id="phone-nav"
+          aria-label={mode === 'RMO' ? 'RMO menu' : 'CEO menu'}
+          className="absolute inset-x-0 top-full max-h-[75vh] overflow-y-auto border-t border-white/10 bg-[#0f2a2a] pb-3 shadow-lg sm:hidden"
+        >
+          <p className="px-4 pb-1 pt-3 text-xs uppercase tracking-wide text-teal-200">
+            {name} · {displayModeLabel(mode)}
+          </p>
+          <ul>
+            {links.map((link) => {
+              const active = isActive(link.href);
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    aria-current={active ? 'page' : undefined}
+                    className={`block px-4 py-3 text-base ${
+                      active ? 'bg-white/15 font-semibold text-white' : 'text-teal-50 hover:bg-white/10'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      ) : null}
     </header>
   );
 }
