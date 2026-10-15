@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
+import SettingsBack from '@/components/SettingsBack';
+
+/** Daily digest is off by Jonathan's request (felt like spam). Set true to show the digest controls again. */
+const SHOW_DIGEST = false;
 
 type Alerts = {
   ntfy_server: string;
@@ -58,7 +62,7 @@ export default function AlertsClient({ userName }: { userName: string }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         licenseId,
-        digest,
+        digest: SHOW_DIGEST ? digest : undefined,
         alerts: { ...alerts, ntfy_token: token || undefined, clear_ntfy_token: clearToken }
       })
     });
@@ -95,9 +99,10 @@ export default function AlertsClient({ userName }: { userName: string }) {
 
   return (
     <AppShell mode="RMO" name={userName}>
+      <SettingsBack href="/dashboard/settings" />
       <div className="mx-auto max-w-xl">
         <p className="text-sm uppercase tracking-wide text-slate-500">RMO only</p>
-        <h1 className="font-serif text-3xl">Alerts</h1>
+        <h1 className="font-serif text-3xl">Notifications</h1>
         <p className="mt-2 text-slate-600">
           Get a phone notification and email when a CEO submits a report. Phone alerts use the
           free ntfy app (same as your power-outage alerts).
@@ -158,6 +163,7 @@ export default function AlertsClient({ userName }: { userName: string }) {
               </label>
             </section>
 
+            {SHOW_DIGEST ? (
             <section className="border border-slate-200 bg-white p-4">
               <h2 className="font-semibold">Daily digest</h2>
               {licenses.length > 1 ? (
@@ -187,6 +193,7 @@ export default function AlertsClient({ userName }: { userName: string }) {
                 </select>
               </label>
             </section>
+            ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <button type="button" disabled={busy} onClick={save} className="bg-[#0f2a2a] px-4 py-3 font-semibold text-white disabled:opacity-50">

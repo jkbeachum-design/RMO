@@ -23,12 +23,6 @@ You are signed in as the RMO (Responsible Managing Officer / qualifier). The RMO
 ## Portfolio
 - CSLB 7068.1 / 7068.2 tracking: rolling one-year usage, firm associations and slots remaining, record an association with its eligibility basis, and 7068.2 disassociation clocks.
 
-## Onboarding (companies / licenses)
-- "Add company to portfolio": license number, legal company name, license status (e.g. ACTIVE / EXEMPT), qualifier duties description, links. Existing companies can be edited here.
-
-## Roles & team (CEO management)
-- Permission matrix by role, the company team list, and pending invites. Manage which people (CEOs and others) have access to which company.
-
 ## Projects and Subs
 - Same records the CEO sees, across your accessible licenses. Create or edit projects (address, contract value, permit, trades, scope, dates, status) and subcontractors (company, contact, phone, email, trade, CSLB number, COI expiration and document link). An AI fill helper can turn a pasted note into form fields.
 
@@ -44,11 +38,18 @@ You are signed in as the RMO (Responsible Managing Officer / qualifier). The RMO
 ## Export
 - Audit defense / evidence export package and acknowledgements.
 
-## Rules
-- Rules & digests: rule thresholds that generate review flags, and digest / low-involvement alert settings.
+## Settings
+The menu has a Settings item (last link). Sections:
+- Account: edit your name and phone, see your sign-in email, change password (current password, then the new one twice, 8+ characters), log out.
+- Notifications: phone alerts through the ntfy app (server, topic, optional access token which is saved but never shown again), alert email address(es), and toggles for "New report submitted" and "Reports with flags" (flag details are included only in your RMO alerts). "Send test alert" sends one phone push and one email. The daily digest is turned off.
+- Compliance rules: per-company rule thresholds that raise review flags, and the low-involvement window in days.
+- Companies & licenses (formerly Onboarding): add a company to your portfolio or edit one (license number, legal name, license status, qualifier duties, links).
+- Team & CEOs (formerly Roles): permission matrix, the company team, Add CEO, pending invites, change a member's role, and "Remove from this license", which takes a person off that one company after a confirmation. It does not deactivate their account, and you cannot remove yourself or the last RMO.
+- App & help: install on your phone, the Help button, and support contact.
+Old links to Onboarding, Roles and Alerts open the matching Settings page.
 
 ## CEO portal (what your CEOs see)
-- Check-In with the structured report form, History (with edit), Vault, Projects, Subs, phone install and offline queue, forgot password. CEOs never see review flags.
+- Check-In with the structured report form, History (with edit), Vault, Projects, Subs, phone install and offline queue, forgot password, and CEO Settings (account with phone-only editing, change password, My company with the RMO contact, phone app and offline queue, help). CEOs never see review flags.
 
 ## Support
 - If something is not covered here, it may not exist yet; check with the system admin (Jonathan Beachum, jbeachum@buildmyoffice.com).
