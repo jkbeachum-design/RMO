@@ -2,6 +2,7 @@ import Navbar from './Navbar';
 import OnlineStatusBanner from './OnlineStatusBanner';
 import PendingReportsBanner from './PendingReportsBanner';
 import OperatorActivityLogger from './OperatorActivityLogger';
+import ReportDueBanner from './ReportDueBanner';
 import HelpChat from './HelpChat';
 import type { AppMode } from '@/lib/types';
 
@@ -24,6 +25,7 @@ export default function AppShell({
         {showOfflineChrome ? (
           <>
             <OperatorActivityLogger />
+            <ReportDueBanner />
             <OnlineStatusBanner />
             <PendingReportsBanner />
           </>

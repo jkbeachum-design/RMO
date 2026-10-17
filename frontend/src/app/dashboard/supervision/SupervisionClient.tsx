@@ -38,6 +38,12 @@ type OperatorActivityRow = {
   daysSinceReport: number | null;
   status: ActivityStatus;
   thresholds: { amber: number; red: number };
+  reminderOverdue?: {
+    dueDate: string;
+    daysOverdue: number;
+    label: string;
+    finalNoticeText: string | null;
+  } | null;
 };
 
 type RecentPortalEvent = {
@@ -56,6 +62,9 @@ function statusStyles(status: ActivityStatus): string {
 }
 
 function statusLabel(row: OperatorActivityRow): string {
+  if (row.reminderOverdue) {
+    return `${row.reminderOverdue.daysOverdue}d overdue · Required report`;
+  }
   if (row.daysSinceReport == null) return 'No reports';
   if (row.status === 'green') return `${row.daysSinceReport}d · OK`;
   if (row.status === 'amber') return `${row.daysSinceReport}d · Watch`;
@@ -239,6 +248,12 @@ export default function SupervisionClient({ userName }: { userName: string }) {
                     <td className="py-3 pr-3">
                       <p className="font-medium text-slate-900">{op.name}</p>
                       <p className="text-xs text-slate-500">{op.email}</p>
+                      {op.reminderOverdue ? (
+                        <p className="mt-1 text-xs text-red-800">
+                          Required report due {op.reminderOverdue.dueDate} ·{' '}
+                          {op.reminderOverdue.label}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastOpen)}</td>
                     <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastSignIn)}</td>
@@ -254,6 +269,26 @@ export default function SupervisionClient({ userName }: { userName: string }) {
                 ))}
               </tbody>
             </table>
+          </div>
+        ) : null}
+
+        {operators.some((op) => op.reminderOverdue?.finalNoticeText) ? (
+          <div className="mt-6 space-y-4">
+            <h3 className="text-sm font-semibold text-slate-800">
+              Final notice (copy &amp; send yourself — not emailed automatically)
+            </h3>
+            {operators
+              .filter((op) => op.reminderOverdue?.finalNoticeText)
+              .map((op) => (
+                <div key={`final-${op.userId}`} className="border border-red-200 bg-red-50 p-3">
+                  <p className="mb-2 text-xs font-semibold text-red-900">
+                    {op.name} · {op.email}
+                  </p>
+                  <pre className="whitespace-pre-wrap text-xs text-slate-800">
+                    {op.reminderOverdue?.finalNoticeText}
+                  </pre>
+                </div>
+              ))}
           </div>
         ) : null}
 

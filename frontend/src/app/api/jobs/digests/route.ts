@@ -4,6 +4,12 @@ import { loadMemberships, membershipLicenseIds } from '@/lib/access';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { isLowInvolvement, mergeComplianceSettings } from '@/lib/rules';
 import { filterAlertEmails } from '@/lib/alertRecipients';
+import {
+  getOperatorReminderFlags,
+  mergeReminderSettings,
+  processLicenseReminders,
+  type ReminderActionPreview
+} from '@/lib/reportReminders';
 
 type SettingsRow = Record<string, unknown>;
 
@@ -23,7 +29,12 @@ function settingsFromRow(row: SettingsRow | null | undefined) {
           digest_enabled: row.digest_enabled !== false,
           digest_hour_pt: Number(row.digest_hour_pt),
           alert_email: (row.alert_email as string | null) || null,
-          alert_phone: (row.alert_phone as string | null) || null
+          alert_phone: (row.alert_phone as string | null) || null,
+          reminder_enabled: row.reminder_enabled === true,
+          report_cadence: (row.report_cadence as 'biweekly' | 'weekly' | 'monthly') || 'biweekly',
+          report_due_weekday:
+            row.report_due_weekday != null ? Number(row.report_due_weekday) : 4,
+          report_anchor_date: String(row.report_anchor_date || '2026-10-22').slice(0, 10)
         }
       : null
   );
@@ -67,6 +78,13 @@ export async function POST(req: NextRequest) {
     req.headers.get('x-cron-secret') || bearer || req.nextUrl.searchParams.get('secret') || '';
   const isCron = Boolean(secret && provided === secret);
 
+  const body = await req.json().catch(() => ({}));
+  const dryRun =
+    req.nextUrl.searchParams.get('dry_run') === '1' ||
+    req.nextUrl.searchParams.get('dryRun') === '1' ||
+    body?.dryRun === true ||
+    body?.dry_run === true;
+
   let allowedIds: string[] | null = null;
   let userId: string | null = null;
   let kind: 'MORNING' | 'LOW_INVOLVEMENT' | 'MANUAL' = 'MORNING';
@@ -96,6 +114,7 @@ export async function POST(req: NextRequest) {
 
   const now = new Date();
   const results = [];
+  const reminderActions: ReminderActionPreview[] = [];
   const hourlyCron = req.nextUrl.searchParams.get('hourly') === '1';
   const currentPtHour = Number(
     new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23' }).format(now)
@@ -108,6 +127,23 @@ export async function POST(req: NextRequest) {
       .eq('license_id', license.id)
       .maybeSingle();
     const settings = settingsFromRow(settingsRow);
+    const reminderSettings = mergeReminderSettings(settingsRow);
+    // Reminders run even when digest email is disabled (separate toggle).
+    if (reminderSettings.reminder_enabled) {
+      try {
+        const actions = await processLicenseReminders({
+          licenseId: license.id,
+          licenseNumber: license.license_number,
+          entityName: license.entity_name || 'company',
+          settings: reminderSettings,
+          dryRun
+        });
+        reminderActions.push(...actions);
+      } catch (err) {
+        console.warn('report reminders failed for', license.license_number, err);
+      }
+    }
+
     if (!settings.digest_enabled && kind === 'MORNING') continue;
     // Hourly Vercel cron: only send at each license's chosen hour (Pacific).
     if (isCron && hourlyCron && settings.digest_hour_pt !== currentPtHour) continue;
@@ -242,7 +278,28 @@ export async function POST(req: NextRequest) {
           .join('; ')}`
       : 'All operators have reported within threshold';
 
-    const body = [
+    // Required-report overdue (3+ days) — red flag in digest for RMO
+    let overdueReminderLine = 'No required-report overdues (3+ days)';
+    try {
+      const flags = await getOperatorReminderFlags({
+        licenseId: license.id,
+        licenseNumber: license.license_number,
+        entityName: license.entity_name || 'company',
+        settings: reminderSettings,
+        operators: operatorMeta
+      });
+      const overdueList = Array.from(flags.entries()).map(([id, f]) => {
+        const op = operatorMeta.find((o) => o.id === id);
+        return `${op?.name || id}: ${f.daysOverdue}d overdue (due ${f.dueDate})${f.finalNoticeText ? ' · FINAL NOTICE READY' : ''}`;
+      });
+      if (overdueList.length) {
+        overdueReminderLine = `REQUIRED REPORT OVERDUE (red): ${overdueList.join('; ')}`;
+      }
+    } catch {
+      /* reminder_log / settings may be missing until migration 014 */
+    }
+
+    const digestBody = [
       `License ${license.license_number} — ${license.entity_name || 'company'}`,
       `Open flagged logs (30d): ${openFlags}`,
       `Site visits (30d): ${visits}`,
@@ -251,23 +308,26 @@ export async function POST(req: NextRequest) {
       lowInvolvement
         ? `LOW INVOLVEMENT: no visits/decisions/reviews for ${settings.low_involvement_days}+ days`
         : 'Involvement within threshold',
-      inactiveLine
+      inactiveLine,
+      overdueReminderLine
     ].join('\n');
 
     const rawTo = settings.alert_email || process.env.RMO_ALERT_EMAIL || null;
     const to = filterAlertEmails(rawTo)[0] || null;
     let deliveredEmail = false;
-    if (to) {
+    if (dryRun) {
+      console.log('[dry-run] DIGEST email skipped:', digestBody);
+    } else if (to) {
       const emailResult = await sendEmail(
         to,
         `[RMO Digest] ${license.license_number}`,
-        body
+        digestBody
       );
       deliveredEmail = Boolean(emailResult.ok);
     } else if (rawTo) {
-      console.log('DIGEST (recipients filtered by allowlist/blocklist):', body);
+      console.log('DIGEST (recipients filtered by allowlist/blocklist):', digestBody);
     } else {
-      console.log('DIGEST (no alert_email):', body);
+      console.log('DIGEST (no alert_email):', digestBody);
     }
 
     await supabase.from('digest_runs').insert([
@@ -282,7 +342,9 @@ export async function POST(req: NextRequest) {
           days,
           lowInvolvement,
           inactiveOperators,
-          text: body
+          overdueReminderLine,
+          dryRun,
+          text: digestBody
         },
         delivered_email: deliveredEmail,
         delivered_sms: false
@@ -292,7 +354,9 @@ export async function POST(req: NextRequest) {
     if (lowInvolvement) {
       const alertBody = `LOW INVOLVEMENT alert for ${license.license_number}: threshold ${settings.low_involvement_days} days.`;
       let lowDelivered = false;
-      if (to) {
+      if (dryRun) {
+        console.log('[dry-run] LOW_INVOLVEMENT skipped:', alertBody);
+      } else if (to) {
         const lowResult = await sendEmail(
           to,
           `[RMO] Low involvement — ${license.license_number}`,
@@ -322,11 +386,19 @@ export async function POST(req: NextRequest) {
       decisions,
       days,
       lowInvolvement,
-      inactiveOperators
+      inactiveOperators,
+      overdueReminderLine
     });
   }
 
-  return NextResponse.json({ ok: true, kind, processed: results.length, results });
+  return NextResponse.json({
+    ok: true,
+    kind,
+    dryRun,
+    processed: results.length,
+    results,
+    reminders: reminderActions
+  });
 }
 
 /** Vercel Cron issues GET with `Authorization: Bearer $CRON_SECRET`. GET is cron-only (no session-triggered sends). */
