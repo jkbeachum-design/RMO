@@ -222,7 +222,7 @@ export function buildFinalNoticeText(input: {
     '',
     'This notice is a final request to submit the report immediately. Continued non-reporting will remain on the compliance record reviewed by the Responsible Managing Officer.',
     '',
-    `Sign in and submit: ${signIn}`,
+    `Please sign in and submit your report: ${signIn}`,
     '',
     `To: ${input.operatorEmail}`,
     '',
