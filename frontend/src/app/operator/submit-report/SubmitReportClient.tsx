@@ -14,6 +14,7 @@ import {
   saveOperatorContextCache,
   type CachedLicense
 } from '@/lib/offlineQueue';
+import { logActivity, markReportStartedOnce } from '@/lib/activity';
 import { useOnlineStatus } from '@/lib/useOnlineStatus';
 
 type ProjectDraft = {
@@ -276,6 +277,17 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
     const coiCount = subcontractors.filter((s) => s.coiFile).length;
     return { coiCount, permitCount: permits.length, photoCount: photos.length };
   }, [subcontractors, permits, photos]);
+
+  // report_started once when the manual form is opened (or first edited via markReportStarted)
+  useEffect(() => {
+    if (!licenseId) return;
+    if (!markReportStartedOnce()) return;
+    void logActivity({
+      event: 'report_started',
+      licenseNumber: licenseId,
+      path: '/operator/submit-report'
+    });
+  }, [licenseId]);
 
   useEffect(() => {
     let cancelled = false;

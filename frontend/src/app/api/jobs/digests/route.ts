@@ -113,18 +113,30 @@ export async function POST(req: NextRequest) {
     if (isCron && hourlyCron && settings.digest_hour_pt !== currentPtHour) continue;
 
     const sinceIso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const [{ data: logs }, { data: activities }] = await Promise.all([
-      supabase
-        .from('compliance_logs')
-        .select('id, flagged, created_at, rmo_reviewed')
-        .eq('license_id', license.id)
-        .gte('created_at', sinceIso),
-      supabase
-        .from('supervision_activities')
-        .select('id, activity_type, occurred_at')
-        .eq('license_id', license.id)
-        .gte('occurred_at', sinceIso)
-    ]);
+    const [{ data: logs }, { data: activities }, { data: operatorMembers }, { data: recentReports }] =
+      await Promise.all([
+        supabase
+          .from('compliance_logs')
+          .select('id, flagged, created_at, rmo_reviewed, extracted_data')
+          .eq('license_id', license.id)
+          .gte('created_at', sinceIso),
+        supabase
+          .from('supervision_activities')
+          .select('id, activity_type, occurred_at')
+          .eq('license_id', license.id)
+          .gte('occurred_at', sinceIso),
+        supabase
+          .from('user_licenses')
+          .select('user_id, role, users(id, user_name, user_email)')
+          .eq('license_id', license.id)
+          .in('role', ['OPERATOR', 'FOREMAN', 'PM']),
+        supabase
+          .from('compliance_logs')
+          .select('created_at, extracted_data')
+          .eq('license_id', license.id)
+          .order('created_at', { ascending: false })
+          .limit(200)
+      ]);
 
     const openFlags = (logs || []).filter((l) => l.flagged && !l.rmo_reviewed).length;
     const visits = (activities || []).filter((a) =>
@@ -156,6 +168,80 @@ export async function POST(req: NextRequest) {
             (now.getTime() - new Date(lastTouch).getTime()) / (24 * 60 * 60 * 1000)
           );
 
+    // Flag CEOs/operators with no attributed report in N days (digest payload only — never email/text operators)
+    const inactiveOperators: Array<{ name: string; email: string; days: number | null }> = [];
+    const seenOp = new Set<string>();
+    const operatorIds: string[] = [];
+    const operatorMeta: Array<{ id: string; name: string; email: string }> = [];
+    for (const row of operatorMembers || []) {
+      const u = (Array.isArray(row.users) ? row.users[0] : row.users) as {
+        id?: string;
+        user_name?: string;
+        user_email?: string;
+      } | null;
+      if (!u?.id || seenOp.has(u.id)) continue;
+      seenOp.add(u.id);
+      operatorIds.push(u.id);
+      operatorMeta.push({
+        id: u.id,
+        name: (u.user_name || u.user_email || 'Operator').trim(),
+        email: u.user_email || ''
+      });
+    }
+
+    const submittedByUser = new Map<string, string>();
+    if (operatorIds.length) {
+      const { data: submittedRows, error: submittedErr } = await supabase
+        .from('activity_events')
+        .select('user_id, created_at')
+        .eq('license_id', license.id)
+        .eq('event', 'report_submitted')
+        .in('user_id', operatorIds)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (!submittedErr) {
+        for (const row of submittedRows || []) {
+          if (!submittedByUser.has(row.user_id)) {
+            submittedByUser.set(row.user_id, row.created_at);
+          }
+        }
+      }
+    }
+
+    for (const op of operatorMeta) {
+      let lastReport = submittedByUser.get(op.id) || null;
+      if (!lastReport) {
+        const nameLower = op.name.toLowerCase();
+        for (const log of recentReports || []) {
+          const extracted = (log.extracted_data || {}) as { operator_name?: string };
+          const opName = String(extracted.operator_name || '')
+            .trim()
+            .toLowerCase();
+          if (opName && opName === nameLower) {
+            lastReport = log.created_at;
+            break;
+          }
+        }
+      }
+      const opDays =
+        lastReport == null
+          ? null
+          : Math.round((now.getTime() - new Date(lastReport).getTime()) / (24 * 60 * 60 * 1000));
+      if (opDays == null || opDays >= settings.low_involvement_days) {
+        inactiveOperators.push({
+          name: op.name,
+          email: op.email,
+          days: opDays
+        });
+      }
+    }
+
+    const inactiveLine = inactiveOperators.length
+      ? `Inactive operators (no report in ${settings.low_involvement_days}+ days): ${inactiveOperators
+          .map((o) => `${o.name}${o.days != null ? ` (${o.days}d)` : ' (never)'}`)
+          .join('; ')}`
+      : 'All operators have reported within threshold';
+
     const body = [
       `License ${license.license_number} — ${license.entity_name || 'company'}`,
       `Open flagged logs (30d): ${openFlags}`,
@@ -164,7 +250,8 @@ export async function POST(req: NextRequest) {
       `Last involvement: ${lastTouch || 'none on record'}${days != null ? ` (${days} days)` : ''}`,
       lowInvolvement
         ? `LOW INVOLVEMENT: no visits/decisions/reviews for ${settings.low_involvement_days}+ days`
-        : 'Involvement within threshold'
+        : 'Involvement within threshold',
+      inactiveLine
     ].join('\n');
 
     const rawTo = settings.alert_email || process.env.RMO_ALERT_EMAIL || null;
@@ -188,7 +275,15 @@ export async function POST(req: NextRequest) {
         user_id: userId,
         license_id: license.id,
         kind,
-        payload: { openFlags, visits, decisions, days, lowInvolvement, text: body },
+        payload: {
+          openFlags,
+          visits,
+          decisions,
+          days,
+          lowInvolvement,
+          inactiveOperators,
+          text: body
+        },
         delivered_email: deliveredEmail,
         delivered_sms: false
       }
@@ -226,7 +321,8 @@ export async function POST(req: NextRequest) {
       visits,
       decisions,
       days,
-      lowInvolvement
+      lowInvolvement,
+      inactiveOperators
     });
   }
 

@@ -5,10 +5,11 @@
  */
 
 const DB_NAME = 'rmo-operator-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_QUEUE = 'pending_reports';
 const STORE_FILES = 'pending_files';
 const STORE_CONTEXT = 'context_cache';
+const STORE_ACTIVITY = 'pending_activity';
 
 export type ProjectPayload = {
   id?: string | null;
@@ -111,6 +112,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_CONTEXT)) {
         db.createObjectStore(STORE_CONTEXT, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORE_ACTIVITY)) {
+        db.createObjectStore(STORE_ACTIVITY, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -456,6 +460,94 @@ export async function loadOperatorContextCache(licenseId: string): Promise<Cache
       });
     };
   });
+}
+
+export type QueuedActivityEvent = {
+  id: string;
+  event: string;
+  licenseId: string | null;
+  licenseNumber: string | null;
+  path: string | null;
+  userAgent: string | null;
+  /** Original client timestamp — preserved across offline flush. */
+  createdAt: string;
+};
+
+export async function enqueueActivityEvent(input: {
+  event: string;
+  licenseId?: string | null;
+  licenseNumber?: string | null;
+  path?: string | null;
+  userAgent?: string | null;
+  createdAt?: string | null;
+}): Promise<QueuedActivityEvent> {
+  const db = await openDb();
+  const record: QueuedActivityEvent = {
+    id: uuid(),
+    event: input.event,
+    licenseId: input.licenseId || null,
+    licenseNumber: input.licenseNumber || null,
+    path: input.path || null,
+    userAgent: input.userAgent || null,
+    createdAt: input.createdAt || new Date().toISOString()
+  };
+  const tx = db.transaction(STORE_ACTIVITY, 'readwrite');
+  tx.objectStore(STORE_ACTIVITY).put(record);
+  await txDone(tx);
+  return record;
+}
+
+export async function listQueuedActivityEvents(): Promise<QueuedActivityEvent[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_ACTIVITY, 'readonly');
+    const req = tx.objectStore(STORE_ACTIVITY).getAll();
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const rows = (req.result as QueuedActivityEvent[]) || [];
+      rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      resolve(rows);
+    };
+  });
+}
+
+export async function deleteQueuedActivityEvent(id: string): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(STORE_ACTIVITY, 'readwrite');
+  tx.objectStore(STORE_ACTIVITY).delete(id);
+  await txDone(tx);
+}
+
+/** Flush queued activity events; keeps original createdAt timestamps. */
+export async function flushQueuedActivityEvents(): Promise<{ sent: number; failed: number }> {
+  const queued = await listQueuedActivityEvents();
+  let sent = 0;
+  let failed = 0;
+  for (const item of queued) {
+    try {
+      const res = await fetch('/api/activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: item.event,
+          licenseId: item.licenseId,
+          licenseNumber: item.licenseNumber,
+          path: item.path,
+          userAgent: item.userAgent,
+          createdAt: item.createdAt
+        })
+      });
+      if (!res.ok) {
+        failed += 1;
+        continue;
+      }
+      await deleteQueuedActivityEvent(item.id);
+      sent += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { sent, failed };
 }
 
 /** Attach replacement files onto an existing queued report (re-attach path). */

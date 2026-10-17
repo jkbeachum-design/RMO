@@ -75,5 +75,23 @@ export async function POST(req: Request) {
     ]);
   }
 
+  // Activity: report_submitted (best-effort; never fails the CEO response)
+  try {
+    const { getSupabaseAdmin } = await import('@/lib/supabase');
+    const { shortUserAgent } = await import('@/lib/activity');
+    const supabase = getSupabaseAdmin();
+    await supabase.from('activity_events').insert([
+      {
+        user_id: live.userId,
+        license_id: resolved.license.id,
+        event: 'report_submitted',
+        path: '/operator/submit-report',
+        user_agent: shortUserAgent(req.headers.get('user-agent'))
+      }
+    ]);
+  } catch (err) {
+    console.warn('report_submitted activity log failed:', err);
+  }
+
   return NextResponse.json(redactBackendResponseForOperator(parsed));
 }

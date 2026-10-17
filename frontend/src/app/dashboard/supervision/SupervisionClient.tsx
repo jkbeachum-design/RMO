@@ -1,9 +1,11 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import AppShell from '@/components/AppShell';
+import { formatPacific, type ActivityStatus } from '@/lib/activity';
 
 const ACTIVITY_TYPES = [
   { value: 'ONSITE_VISIT', label: 'On-site visit' },
@@ -25,6 +27,45 @@ type Activity = {
 
 type LicenseOption = { license_number: string; entity_name: string };
 
+type OperatorActivityRow = {
+  userId: string;
+  name: string;
+  email: string;
+  roles: string[];
+  lastOpen: string | null;
+  lastSignIn: string | null;
+  lastReport: string | null;
+  daysSinceReport: number | null;
+  status: ActivityStatus;
+  thresholds: { amber: number; red: number };
+};
+
+type RecentPortalEvent = {
+  id: string;
+  userId: string;
+  event: string;
+  path: string | null;
+  createdAt: string;
+  userName: string;
+};
+
+function statusStyles(status: ActivityStatus): string {
+  if (status === 'green') return 'bg-emerald-100 text-emerald-900 border-emerald-300';
+  if (status === 'amber') return 'bg-amber-100 text-amber-950 border-amber-300';
+  return 'bg-red-100 text-red-900 border-red-300';
+}
+
+function statusLabel(row: OperatorActivityRow): string {
+  if (row.daysSinceReport == null) return 'No reports';
+  if (row.status === 'green') return `${row.daysSinceReport}d · OK`;
+  if (row.status === 'amber') return `${row.daysSinceReport}d · Watch`;
+  return `${row.daysSinceReport}d · Stale`;
+}
+
+function eventLabel(event: string): string {
+  return event.replace(/_/g, ' ');
+}
+
 export default function SupervisionClient({ userName }: { userName: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -43,6 +84,12 @@ export default function SupervisionClient({ userName }: { userName: string }) {
   const [details, setDetails] = useState('');
   const [projectAddress, setProjectAddress] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const [operators, setOperators] = useState<OperatorActivityRow[]>([]);
+  const [recentPortalEvents, setRecentPortalEvents] = useState<RecentPortalEvent[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
+  const [lowInvolvementDays, setLowInvolvementDays] = useState(14);
 
   useEffect(() => {
     fetch('/api/me')
@@ -69,6 +116,22 @@ export default function SupervisionClient({ userName }: { userName: string }) {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  }, [licenseNumber]);
+
+  useEffect(() => {
+    if (!licenseNumber) return;
+    setActivityLoading(true);
+    fetch(`/api/activity?license_number=${encodeURIComponent(licenseNumber)}`)
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || data.hint || 'Failed to load activity');
+        setOperators(data.operators || []);
+        setRecentPortalEvents(data.recentEvents || []);
+        setLowInvolvementDays(Number(data.lowInvolvementDays) || 14);
+        setActivityError('');
+      })
+      .catch((err) => setActivityError(err.message))
+      .finally(() => setActivityLoading(false));
   }, [licenseNumber]);
 
   async function onSubmit(e: FormEvent) {
@@ -133,6 +196,83 @@ export default function SupervisionClient({ userName }: { userName: string }) {
           ))}
         </select>
       </label>
+
+      <section className="mb-8 border border-slate-200 bg-white p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Operator activity</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Are CEOs opening the portal and filing reports? Times in Pacific (America/Los_Angeles).
+              Stale after {Math.max(1, Math.floor(lowInvolvementDays / 2))}/{lowInvolvementDays} days.
+            </p>
+          </div>
+          <Link
+            href="/dashboard/alerts"
+            className="shrink-0 text-sm font-medium text-teal-900 underline hover:text-teal-700"
+          >
+            Phone alerts / Send test
+          </Link>
+        </div>
+
+        {activityLoading ? <p className="text-sm text-slate-500">Loading activity…</p> : null}
+        {activityError ? <p className="text-sm text-red-700">{activityError}</p> : null}
+
+        {!activityLoading && !operators.length && !activityError ? (
+          <p className="text-sm text-slate-500">No CEO / operator members on this license yet.</p>
+        ) : null}
+
+        {operators.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 pr-3 font-medium">Operator</th>
+                  <th className="py-2 pr-3 font-medium">Last open</th>
+                  <th className="py-2 pr-3 font-medium">Last sign-in</th>
+                  <th className="py-2 pr-3 font-medium">Last report</th>
+                  <th className="py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {operators.map((op) => (
+                  <tr key={op.userId} className="border-b border-slate-100 align-top">
+                    <td className="py-3 pr-3">
+                      <p className="font-medium text-slate-900">{op.name}</p>
+                      <p className="text-xs text-slate-500">{op.email}</p>
+                    </td>
+                    <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastOpen)}</td>
+                    <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastSignIn)}</td>
+                    <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastReport)}</td>
+                    <td className="py-3">
+                      <span
+                        className={`inline-block rounded border px-2 py-0.5 text-xs font-semibold ${statusStyles(op.status)}`}
+                      >
+                        {statusLabel(op)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {recentPortalEvents.length ? (
+          <div className="mt-6">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">Recent portal events</h3>
+            <ul className="max-h-56 space-y-2 overflow-y-auto text-sm">
+              {recentPortalEvents.map((ev) => (
+                <li key={ev.id} className="flex flex-wrap gap-x-2 border-b border-slate-100 pb-2 text-slate-700">
+                  <span className="font-medium text-slate-900">{ev.userName}</span>
+                  <span className="uppercase tracking-wide text-slate-500">{eventLabel(ev.event)}</span>
+                  <span className="text-slate-500">{formatPacific(ev.createdAt)}</span>
+                  {ev.path ? <span className="text-xs text-slate-400">{ev.path}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
 
       <section className="mb-8 border border-slate-200 bg-white p-5">
         <h2 className="mb-3 text-lg font-semibold">30-day involvement</h2>
