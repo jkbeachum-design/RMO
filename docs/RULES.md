@@ -23,7 +23,8 @@ Apply `supabase/migrations/005_compliance_settings_digests.sql`:
 | Method | Path | Auth |
 |--------|------|------|
 | GET/PUT | `/api/settings?licenseId=` | RMO session + membership |
-| POST | `/api/jobs/digests` | RMO session (membership-scoped MANUAL) **or** `x-cron-secret` / `?secret=` matching `CRON_SECRET` / `DIGEST_SECRET` |
+| GET | `/api/jobs/digests` | Vercel Cron only — `Authorization: Bearer $CRON_SECRET` (or `DIGEST_SECRET`); unauthenticated → 401 |
+| POST | `/api/jobs/digests` | RMO session (membership-scoped MANUAL) **or** `x-cron-secret` / Bearer / `?secret=` matching `CRON_SECRET` / `DIGEST_SECRET` |
 | POST | Express `/api/jobs/digests` | Same cron secret (all licenses) |
 
 ## Env
@@ -36,13 +37,12 @@ Apply `supabase/migrations/005_compliance_settings_digests.sql`:
 | `ALERT_EMAIL_ALLOWLIST` / `ALERT_EMAIL_BLOCKLIST` | Pilot recipient filter — see [ALERTS.md](./ALERTS.md) |
 | Twilio vars | SMS on Express digest path when `alert_phone` set |
 
-Schedule morning digests (example cron):
+Production schedule is `frontend/vercel.json` → daily `GET /api/jobs/digests` at 14:00 UTC. Manual/secret check:
 
 ```bash
-curl -X POST -H "x-cron-secret: $CRON_SECRET" https://<app>/api/jobs/digests
+curl -H "Authorization: Bearer $CRON_SECRET" https://rmo.buildmyoffice.com/api/jobs/digests
+# or Settings → run digest (POST, RMO session)
 ```
-
-Prefer hitting the Next route (or Express) near `digest_hour_pt` Pacific.
 
 ## Verify
 
