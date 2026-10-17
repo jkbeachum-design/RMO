@@ -31,6 +31,19 @@ function LoginForm() {
       return;
     }
 
+    // Lightweight sign_in activity — never blocks navigation
+    try {
+      const { logActivity } = await import('@/lib/activity');
+      const licenseIds = (data.user?.licenseIds || []) as string[];
+      void logActivity({
+        event: 'sign_in',
+        licenseId: licenseIds[0] || null,
+        path: '/'
+      });
+    } catch {
+      /* ignore */
+    }
+
     router.push(data.user?.mode === 'OPERATOR' ? '/operator' : '/dashboard');
     router.refresh();
   }

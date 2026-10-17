@@ -1,6 +1,7 @@
 import Navbar from './Navbar';
 import OnlineStatusBanner from './OnlineStatusBanner';
 import PendingReportsBanner from './PendingReportsBanner';
+import OperatorActivityLogger from './OperatorActivityLogger';
 import HelpChat from './HelpChat';
 import type { AppMode } from '@/lib/types';
 
@@ -22,6 +23,7 @@ export default function AppShell({
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-8">
         {showOfflineChrome ? (
           <>
+            <OperatorActivityLogger />
             <OnlineStatusBanner />
             <PendingReportsBanner />
           </>
