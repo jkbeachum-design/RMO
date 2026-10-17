@@ -29,7 +29,12 @@ function rowToSettings(row: Record<string, unknown> | null | undefined): Complia
     digest_enabled: row.digest_enabled !== false,
     digest_hour_pt: Number(row.digest_hour_pt),
     alert_email: (row.alert_email as string | null) || null,
-    alert_phone: (row.alert_phone as string | null) || null
+    alert_phone: (row.alert_phone as string | null) || null,
+    reminder_enabled: row.reminder_enabled === true,
+    report_cadence: (row.report_cadence as ComplianceSettings['report_cadence']) || 'biweekly',
+    report_due_weekday:
+      row.report_due_weekday != null ? Number(row.report_due_weekday) : 4,
+    report_anchor_date: String(row.report_anchor_date || '2026-10-22').slice(0, 10)
   });
 }
 
@@ -107,6 +112,10 @@ export async function PUT(req: NextRequest) {
     digest_hour_pt: merged.digest_hour_pt,
     alert_email: merged.alert_email || null,
     alert_phone: merged.alert_phone || null,
+    reminder_enabled: merged.reminder_enabled === true,
+    report_cadence: merged.report_cadence || 'biweekly',
+    report_due_weekday: merged.report_due_weekday ?? 4,
+    report_anchor_date: merged.report_anchor_date || '2026-10-22',
     updated_at: new Date().toISOString()
   };
 

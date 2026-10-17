@@ -1,5 +1,7 @@
 /** Default + merge helpers for configurable compliance rules. */
 
+export type ReportCadence = 'biweekly' | 'weekly' | 'monthly';
+
 export type ComplianceSettings = {
   contract_value_threshold: number;
   permit_required_above: number;
@@ -14,6 +16,13 @@ export type ComplianceSettings = {
   digest_hour_pt: number;
   alert_email?: string | null;
   alert_phone?: string | null;
+  /** Required CEO report reminders (digest cron). */
+  reminder_enabled: boolean;
+  report_cadence: ReportCadence;
+  /** JS weekday 0=Sun … 4=Thu */
+  report_due_weekday: number;
+  /** First cadence due date (YYYY-MM-DD, Pacific). */
+  report_anchor_date: string;
 };
 
 export const DEFAULT_COMPLIANCE_SETTINGS: ComplianceSettings = {
@@ -29,7 +38,11 @@ export const DEFAULT_COMPLIANCE_SETTINGS: ComplianceSettings = {
   digest_enabled: true,
   digest_hour_pt: 7,
   alert_email: null,
-  alert_phone: null
+  alert_phone: null,
+  reminder_enabled: false,
+  report_cadence: 'biweekly',
+  report_due_weekday: 4,
+  report_anchor_date: '2026-10-22'
 };
 
 export function mergeComplianceSettings(

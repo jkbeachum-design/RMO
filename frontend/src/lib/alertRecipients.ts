@@ -93,6 +93,35 @@ export function filterAlertEmails(
 }
 
 /**
+ * Operator required-report reminder emails (due_soon / past_due only).
+ * Lifts the hard-coded Eric block and skips the RMO alert allowlist so CEOs
+ * can be emailed. Env ALERT_EMAIL_BLOCKLIST (other addresses) still applies.
+ * Do NOT use for digests, critical flags, or ntfy report alerts.
+ */
+export function filterOperatorReminderEmails(
+  emails: Iterable<string> | string | null | undefined,
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
+  const raw = toList(emails);
+  const envBlock = new Set(parseCsvEnv(env.ALERT_EMAIL_BLOCKLIST).map(normalizeEmail));
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of raw) {
+    const email = normalizeEmail(item);
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    if (envBlock.has(email)) {
+      console.log(`OPERATOR reminder blocked: ${email} (env blocklist)`);
+      continue;
+    }
+    out.push(email);
+  }
+
+  return out;
+}
+
+/**
  * Filter outbound SMS recipients.
  * When ALERT_PHONE_ALLOWLIST is set, only those numbers may be texted.
  * Blocklist always applies. Unknown / empty entries are dropped.

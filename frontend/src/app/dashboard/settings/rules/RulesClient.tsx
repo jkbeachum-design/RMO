@@ -204,6 +204,67 @@ export default function RulesClient({ userName }: { userName: string }) {
               </div>
             </section>
 
+            <section className="space-y-4">
+              <h2 className="font-serif text-xl text-slate-900">Required report reminders</h2>
+              <p className="text-sm text-slate-600">
+                Email CEOs before and after each due date via the daily digest cron. Default cadence is
+                every other Thursday (Pacific), starting from the anchor date. Also requires a report
+                within 3 days of a project being created, started, or completed.
+              </p>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={settings.reminder_enabled === true}
+                  onChange={(e) => setBool('reminder_enabled', e.target.checked)}
+                />
+                Enable required-report reminders for this company
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm">
+                  Cadence
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={settings.report_cadence}
+                    onChange={(e) =>
+                      setSettings((s) => ({
+                        ...s,
+                        report_cadence: e.target.value as ComplianceSettings['report_cadence']
+                      }))
+                    }
+                  >
+                    <option value="biweekly">Every other week</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Every 4 weeks</option>
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  Due weekday (Pacific)
+                  <select
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={settings.report_due_weekday}
+                    onChange={(e) => setNum('report_due_weekday', e.target.value)}
+                  >
+                    <option value={1}>Monday</option>
+                    <option value={2}>Tuesday</option>
+                    <option value={3}>Wednesday</option>
+                    <option value={4}>Thursday</option>
+                    <option value={5}>Friday</option>
+                  </select>
+                </label>
+                <label className="block text-sm sm:col-span-2">
+                  First due date (anchor, YYYY-MM-DD Pacific)
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+                    value={settings.report_anchor_date}
+                    onChange={(e) =>
+                      setSettings((s) => ({ ...s, report_anchor_date: e.target.value }))
+                    }
+                  />
+                </label>
+              </div>
+            </section>
+
             <button
               type="submit"
               disabled={saving}

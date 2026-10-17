@@ -14,6 +14,10 @@ import {
   type ActivityEventType
 } from '@/lib/activity';
 import { daysSince, mergeComplianceSettings } from '@/lib/rules';
+import {
+  getOperatorReminderFlags,
+  mergeReminderSettings
+} from '@/lib/reportReminders';
 
 const OPERATOR_ROLES = new Set(['OPERATOR', 'FOREMAN', 'PM']);
 
@@ -175,10 +179,19 @@ export async function GET(req: Request) {
   const settings = mergeComplianceSettings(
     settingsRow
       ? {
-          low_involvement_days: Number(settingsRow.low_involvement_days)
+          low_involvement_days: Number(settingsRow.low_involvement_days),
+          reminder_enabled: settingsRow.reminder_enabled === true,
+          report_cadence:
+            (settingsRow.report_cadence as 'biweekly' | 'weekly' | 'monthly') || 'biweekly',
+          report_due_weekday:
+            settingsRow.report_due_weekday != null
+              ? Number(settingsRow.report_due_weekday)
+              : 4,
+          report_anchor_date: String(settingsRow.report_anchor_date || '2026-10-22').slice(0, 10)
         }
       : null
   );
+  const reminderSettings = mergeReminderSettings(settingsRow);
 
   // Unique operator-side members (CEO / PM / Foreman)
   type MemberUser = {
@@ -292,6 +305,28 @@ export async function GET(req: Request) {
     return null;
   }
 
+  let reminderFlags = new Map<
+    string,
+    {
+      dueDate: string;
+      daysOverdue: number;
+      red: boolean;
+      finalNoticeText: string | null;
+      label: string;
+    }
+  >();
+  try {
+    reminderFlags = await getOperatorReminderFlags({
+      licenseId,
+      licenseNumber: resolved.license.license_number,
+      entityName: resolved.license.entity_name || 'company',
+      settings: reminderSettings,
+      operators: operators.map((o) => ({ id: o.id, name: o.name, email: o.email }))
+    });
+  } catch (err) {
+    console.warn('reminder flags for activity failed:', err);
+  }
+
   const now = new Date();
   const operatorSummaries = operators.map((op) => {
     const lastOpen = lastOpenByUser.get(op.id) || null;
@@ -299,7 +334,9 @@ export async function GET(req: Request) {
       lastSignInAuth.get(op.id) || lastSignInEventByUser.get(op.id) || null;
     const lastReport = lastReportForOperator(op);
     const days = daysSince(lastReport, now);
-    const status = reportActivityStatus(days, settings.low_involvement_days);
+    let status = reportActivityStatus(days, settings.low_involvement_days);
+    const reminder = reminderFlags.get(op.id) || null;
+    if (reminder?.red) status = 'red';
     return {
       userId: op.id,
       name: op.name,
@@ -313,7 +350,15 @@ export async function GET(req: Request) {
       thresholds: {
         amber: Math.max(1, Math.floor(settings.low_involvement_days / 2)),
         red: settings.low_involvement_days
-      }
+      },
+      reminderOverdue: reminder
+        ? {
+            dueDate: reminder.dueDate,
+            daysOverdue: reminder.daysOverdue,
+            label: reminder.label,
+            finalNoticeText: reminder.finalNoticeText
+          }
+        : null
     };
   });
 

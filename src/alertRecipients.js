@@ -123,6 +123,41 @@ function filterAlertEmails(emails, env = process.env) {
 }
 
 /**
+ * Operator required-report reminder emails only.
+ * Lifts hard-coded Eric block + skips RMO allowlist. Env blocklist still applies.
+ *
+ * @param {Iterable<string> | string | null | undefined} emails
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string[]}
+ */
+function filterOperatorReminderEmails(emails, env = process.env) {
+  const raw = Array.isArray(emails)
+    ? emails
+    : emails == null || emails === ''
+      ? []
+      : typeof emails === 'string'
+        ? emails.split(',')
+        : [...emails];
+
+  const envBlock = new Set(parseCsvEnv(env.ALERT_EMAIL_BLOCKLIST).map(normalizeEmail));
+  const out = [];
+  const seen = new Set();
+
+  for (const item of raw) {
+    const email = normalizeEmail(item);
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    if (envBlock.has(email)) {
+      console.log(`OPERATOR reminder blocked: ${email} (env blocklist)`);
+      continue;
+    }
+    out.push(email);
+  }
+
+  return out;
+}
+
+/**
  * Filter outbound SMS recipients.
  * When ALERT_PHONE_ALLOWLIST is set, only those numbers may be texted.
  * Blocklist always applies. Unknown / empty entries are dropped.
@@ -184,6 +219,7 @@ module.exports = {
   normalizeEmail,
   normalizePhone,
   filterAlertEmails,
+  filterOperatorReminderEmails,
   filterAlertPhones,
   filterAlertRecipients
 };
