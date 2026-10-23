@@ -141,16 +141,16 @@ export default async function VaultPage({
         </Suspense>
       </div>
 
-      <div className="mb-6 grid grid-cols-3 gap-3">
-        <div className="border border-red-200 bg-red-50 p-4">
+      <div className="mb-6 grid grid-cols-1 gap-3 min-[400px]:grid-cols-3">
+        <div className="min-w-0 border border-red-200 bg-red-50 p-3 sm:p-4">
           <p className="text-xs uppercase text-red-800">Expired</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{summary.expired}</p>
         </div>
-        <div className="border border-amber-200 bg-amber-50 p-4">
+        <div className="min-w-0 border border-amber-200 bg-amber-50 p-3 sm:p-4">
           <p className="text-xs uppercase text-amber-800">Expiring soon</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{summary.expiring}</p>
         </div>
-        <div className="border border-slate-200 bg-white p-4">
+        <div className="min-w-0 border border-slate-200 bg-white p-3 sm:p-4">
           <p className="text-xs uppercase text-slate-500">Missing docs</p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">{summary.missing}</p>
         </div>

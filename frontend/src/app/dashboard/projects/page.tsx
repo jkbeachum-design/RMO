@@ -113,66 +113,114 @@ export default async function ProjectsPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 bg-white">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Address</th>
-              <th className="px-4 py-3">Value</th>
-              <th className="px-4 py-3">Permit</th>
-              <th className="px-4 py-3">Trades</th>
-              <th className="px-4 py-3">Dates</th>
-              <th className="px-4 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody>
+      {!list.length ? (
+        <p className="border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-slate-500">
+          No projects in this filter. Add one here or from a CEO report.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-3 md:hidden">
             {list.map((p) => (
-              <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-4 py-3 font-medium text-slate-900">
-                  <Link
-                    href={`/dashboard/projects/${p.id}?license=${encodeURIComponent(current)}`}
-                    className="text-teal-900 hover:underline"
-                  >
-                    {p.project_address || '—'}
-                  </Link>
-                </td>
-                <td className="px-4 py-3 tabular-nums">
-                  {p.contract_value != null
-                    ? `$${Number(p.contract_value).toLocaleString()}`
-                    : '—'}
-                </td>
-                <td className="px-4 py-3">{p.permit_number || '—'}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {(p.trades_involved || []).join(', ') || '—'}
-                </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {p.start_date || '—'}
-                  {p.end_date ? ` → ${p.end_date}` : ''}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${projectStatusClass(p.status)}`}
-                  >
-                    {projectStatusLabel(p.status)}
-                  </span>
-                  {p.updated_at ? (
-                    <span className="mt-1 block text-xs text-slate-400">
-                      upd {format(new Date(p.updated_at), 'PP')}
+              <li key={p.id}>
+                <Link
+                  href={`/dashboard/projects/${p.id}?license=${encodeURIComponent(current)}`}
+                  className="block border border-slate-200 bg-white p-4 hover:border-teal-700"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 font-medium text-slate-900">{p.project_address || '—'}</p>
+                    <span
+                      className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${projectStatusClass(p.status)}`}
+                    >
+                      {projectStatusLabel(p.status)}
                     </span>
-                  ) : null}
-                </td>
-              </tr>
+                  </div>
+                  <dl className="mt-3 space-y-1 text-sm text-slate-600">
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Value</dt>
+                      <dd className="tabular-nums">
+                        {p.contract_value != null
+                          ? `$${Number(p.contract_value).toLocaleString()}`
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Permit</dt>
+                      <dd className="truncate text-right">{p.permit_number || '—'}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Trades</dt>
+                      <dd className="truncate text-right">
+                        {(p.trades_involved || []).join(', ') || '—'}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Dates</dt>
+                      <dd className="text-right">
+                        {p.start_date || '—'}
+                        {p.end_date ? ` → ${p.end_date}` : ''}
+                      </dd>
+                    </div>
+                  </dl>
+                </Link>
+              </li>
             ))}
-            {!list.length ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                  No projects in this filter. Add one here or from a CEO report.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+          </ul>
+
+          <div className="hidden overflow-x-auto border border-slate-200 bg-white md:block">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Address</th>
+                  <th className="px-4 py-3">Value</th>
+                  <th className="px-4 py-3">Permit</th>
+                  <th className="px-4 py-3">Trades</th>
+                  <th className="px-4 py-3">Dates</th>
+                  <th className="px-4 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((p) => (
+                  <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      <Link
+                        href={`/dashboard/projects/${p.id}?license=${encodeURIComponent(current)}`}
+                        className="text-teal-900 hover:underline"
+                      >
+                        {p.project_address || '—'}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 tabular-nums">
+                      {p.contract_value != null
+                        ? `$${Number(p.contract_value).toLocaleString()}`
+                        : '—'}
+                    </td>
+                    <td className="px-4 py-3">{p.permit_number || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {(p.trades_involved || []).join(', ') || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {p.start_date || '—'}
+                      {p.end_date ? ` → ${p.end_date}` : ''}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${projectStatusClass(p.status)}`}
+                      >
+                        {projectStatusLabel(p.status)}
+                      </span>
+                      {p.updated_at ? (
+                        <span className="mt-1 block text-xs text-slate-400">
+                          upd {format(new Date(p.updated_at), 'PP')}
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }

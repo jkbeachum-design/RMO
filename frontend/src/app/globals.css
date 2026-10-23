@@ -19,3 +19,24 @@ body {
 .font-serif {
   font-family: 'Instrument Serif', Georgia, serif;
 }
+
+/* 16px form controls on phones so iOS Safari does not auto-zoom on focus */
+@layer base {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']):not([type='submit']):not([type='button']):not([type='reset']):not([type='image']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  input[type='file'] {
+    max-width: 100%;
+  }
+
+  @media (min-width: 640px) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']):not([type='submit']):not([type='button']):not([type='reset']):not([type='image']):not([type='file']),
+    select,
+    textarea {
+      font-size: 0.875rem;
+    }
+  }
+}

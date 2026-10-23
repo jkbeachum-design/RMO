@@ -314,13 +314,13 @@ export default function ExportClient({ userName }: { userName: string }) {
         </p>
       </div>
 
-      <div className="mb-6 grid gap-3 border border-slate-200 bg-white p-5 sm:grid-cols-4">
-        <label className="block text-sm sm:col-span-2">
+      <div className="mb-6 grid min-w-0 gap-3 border border-slate-200 bg-white p-4 sm:grid-cols-4 sm:p-5">
+        <label className="block min-w-0 text-sm sm:col-span-2">
           <span className="mb-1 block text-slate-600">Company</span>
           <select
             value={licenseNumber}
             onChange={(e) => setLicenseNumber(e.target.value)}
-            className="w-full rounded border border-slate-300 px-3 py-2"
+            className="w-full min-w-0 max-w-full truncate rounded border border-slate-300 px-3 py-2"
           >
             {licenses.map((l) => (
               <option key={l.license_number} value={l.license_number}>

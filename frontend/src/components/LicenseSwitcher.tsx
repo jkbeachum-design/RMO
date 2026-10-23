@@ -25,12 +25,12 @@ export default function LicenseSwitcher({
   }
 
   return (
-    <label className="flex flex-col gap-1 text-sm">
+    <label className="flex w-full min-w-0 max-w-full flex-col gap-1 text-sm sm:max-w-xs">
       <span className="text-slate-500">Active license</span>
       <select
         value={current}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900"
+        className="w-full min-w-0 max-w-full truncate rounded border border-slate-300 bg-white px-3 py-2 text-slate-900"
       >
         {licenses.map((l) => (
           <option key={l.license_number} value={l.license_number}>

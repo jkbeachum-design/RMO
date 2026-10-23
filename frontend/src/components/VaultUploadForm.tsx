@@ -93,13 +93,13 @@ export default function VaultUploadForm({ licenseNumber }: { licenseNumber: stri
           />
         </label>
       </div>
-      <label className="block text-sm">
+      <label className="block min-w-0 text-sm">
         <span className="text-slate-600">File (PDF/JPG/PNG, max 5MB)</span>
         <input
           type="file"
           accept=".pdf,.jpg,.jpeg,.png"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
-          className="mt-1 block w-full text-sm"
+          className="mt-1 block w-full max-w-full min-w-0 text-base file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm sm:text-sm"
         />
       </label>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
