@@ -36,7 +36,11 @@ Use this when the password is unknown (do **not** bring back `PILOT_PASSWORD`).
    `redirectTo = {origin}/auth/reset-password`  
    (`origin` = `NEXT_PUBLIC_SITE_URL` or request Origin / production default).
 4. Supabase sends the built-in reset email (no custom mailer in this app).
-5. User opens the link → `/auth/reset-password` (or `/auth/confirm` → forward) establishes a recovery session (`?code=` PKCE, `token_hash`, or implicit hash).
+5. User opens the link → `/auth/reset-password` (or `/auth/confirm` → forward) establishes a recovery session.
+   The server sends recovery with **implicit** flow (`flowType: 'implicit'`), so the common callback is  
+   `#access_token=…&refresh_token=…&type=recovery`. The reset page also accepts `?code=` (PKCE) and  
+   `?token_hash=…&type=recovery` via `establishRecoverySession` — it does **not** use a PKCE browser  
+   client with `detectSessionInUrl`, which rejects implicit hash callbacks.
 6. User sets a new password via `updateUser({ password })`, then signs in on `/` → same `rmo_session` + membership routing as normal login.
 
 Always returns a generic success message (no email enumeration).

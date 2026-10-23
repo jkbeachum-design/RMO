@@ -13,6 +13,10 @@ import {
   resolveAppOrigin
 } from '../frontend/src/lib/siteUrl.ts';
 import { validateNewPassword } from '../frontend/src/lib/passwordPolicy.ts';
+import {
+  establishRecoverySession,
+  parseRecoveryCallback
+} from '../frontend/src/lib/authRecovery.ts';
 
 // Mirror frontend/src/lib/session.ts + password.ts for Node test runner
 // (keeps CI free of a TS transpile step while asserting security properties)
@@ -259,5 +263,161 @@ describe('password reset helpers', () => {
   it('enforces new-password minimum length', () => {
     assert.equal(validateNewPassword('short').ok, false);
     assert.equal(validateNewPassword('long-enough-password').ok, true);
+  });
+});
+
+describe('password recovery callback parsing', () => {
+  it('parses implicit hash recovery tokens (mobile Safari default)', () => {
+    const parsed = parseRecoveryCallback(
+      'https://rmo.buildmyoffice.com/auth/reset-password#access_token=atk&expires_in=3600&refresh_token=rtk&token_type=bearer&type=recovery'
+    );
+    assert.equal(parsed.kind, 'implicit');
+    assert.equal(parsed.access_token, 'atk');
+    assert.equal(parsed.refresh_token, 'rtk');
+    assert.equal(parsed.type, 'recovery');
+  });
+
+  it('parses PKCE ?code= callbacks', () => {
+    const parsed = parseRecoveryCallback(
+      'https://rmo.buildmyoffice.com/auth/reset-password?code=auth-code-123'
+    );
+    assert.equal(parsed.kind, 'pkce');
+    assert.equal(parsed.code, 'auth-code-123');
+  });
+
+  it('parses token_hash recovery OTPs (custom email templates)', () => {
+    const parsed = parseRecoveryCallback(
+      'https://rmo.buildmyoffice.com/auth/reset-password?token_hash=thash&type=recovery'
+    );
+    assert.equal(parsed.kind, 'token_hash');
+    assert.equal(parsed.token_hash, 'thash');
+    assert.equal(parsed.type, 'recovery');
+  });
+
+  it('prefers hash tokens when both query and hash are present', () => {
+    const parsed = parseRecoveryCallback(
+      'https://rmo.buildmyoffice.com/auth/reset-password?type=email#access_token=atk&refresh_token=rtk&type=recovery'
+    );
+    assert.equal(parsed.kind, 'implicit');
+    assert.equal(parsed.type, 'recovery');
+  });
+
+  it('surfaces Auth error params from the callback URL', () => {
+    const parsed = parseRecoveryCallback(
+      'https://rmo.buildmyoffice.com/auth/reset-password?error=access_denied&error_description=Link+expired'
+    );
+    assert.equal(parsed.kind, 'error');
+    assert.equal(parsed.error, 'access_denied');
+  });
+
+  it('returns none when the URL has no recovery payload', () => {
+    assert.equal(
+      parseRecoveryCallback('https://rmo.buildmyoffice.com/auth/reset-password').kind,
+      'none'
+    );
+  });
+});
+
+describe('establishRecoverySession', () => {
+  function mockClient(overrides = {}) {
+    const calls = { setSession: [], exchangeCodeForSession: [], verifyOtp: [], getSession: [] };
+    const client = {
+      auth: {
+        async setSession(tokens) {
+          calls.setSession.push(tokens);
+          return overrides.setSession
+            ? overrides.setSession(tokens)
+            : { data: { session: { access_token: tokens.access_token } }, error: null };
+        },
+        async exchangeCodeForSession(code) {
+          calls.exchangeCodeForSession.push(code);
+          return overrides.exchangeCodeForSession
+            ? overrides.exchangeCodeForSession(code)
+            : { data: { session: { access_token: 'x' } }, error: null };
+        },
+        async verifyOtp(params) {
+          calls.verifyOtp.push(params);
+          return overrides.verifyOtp
+            ? overrides.verifyOtp(params)
+            : { data: { session: { access_token: 'x' } }, error: null };
+        },
+        async getSession() {
+          calls.getSession.push(true);
+          return overrides.getSession
+            ? overrides.getSession()
+            : { data: { session: null }, error: null };
+        }
+      }
+    };
+    return { client, calls };
+  }
+
+  it('establishes session from implicit hash via setSession', async () => {
+    const { client, calls } = mockClient();
+    const result = await establishRecoverySession(
+      client,
+      'https://rmo.buildmyoffice.com/auth/reset-password#access_token=atk&refresh_token=rtk&type=recovery'
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls.setSession, [{ access_token: 'atk', refresh_token: 'rtk' }]);
+    assert.equal(calls.exchangeCodeForSession.length, 0);
+    assert.equal(calls.verifyOtp.length, 0);
+  });
+
+  it('establishes session from ?code= via exchangeCodeForSession', async () => {
+    const { client, calls } = mockClient();
+    const result = await establishRecoverySession(
+      client,
+      'https://rmo.buildmyoffice.com/auth/reset-password?code=abc'
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls.exchangeCodeForSession, ['abc']);
+  });
+
+  it('establishes session from token_hash via verifyOtp', async () => {
+    const { client, calls } = mockClient();
+    const result = await establishRecoverySession(
+      client,
+      'https://rmo.buildmyoffice.com/auth/reset-password?token_hash=th&type=recovery'
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls.verifyOtp, [{ token_hash: 'th', type: 'recovery' }]);
+  });
+
+  it('fails clearly when no callback tokens and no existing session', async () => {
+    const { client } = mockClient();
+    const result = await establishRecoverySession(
+      client,
+      'https://rmo.buildmyoffice.com/auth/reset-password'
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'missing_callback');
+  });
+
+  it('accepts an already-established session with a bare URL', async () => {
+    const { client } = mockClient({
+      getSession: () => ({ data: { session: { access_token: 'existing' } }, error: null })
+    });
+    const result = await establishRecoverySession(
+      client,
+      'https://rmo.buildmyoffice.com/auth/reset-password'
+    );
+    assert.equal(result.ok, true);
+  });
+
+  it('propagates Auth API failures as invalid_or_expired', async () => {
+    const { client } = mockClient({
+      setSession: () => ({
+        data: { session: null },
+        error: { message: 'Invalid JWT' }
+      })
+    });
+    const result = await establishRecoverySession(
+      client,
+      'https://rmo.buildmyoffice.com/auth/reset-password#access_token=bad&refresh_token=bad'
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'invalid_or_expired');
+    assert.match(result.message, /Invalid JWT/);
   });
 });
