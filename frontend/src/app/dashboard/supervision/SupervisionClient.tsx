@@ -191,12 +191,12 @@ export default function SupervisionClient({ userName }: { userName: string }) {
         </p>
       </div>
 
-      <label className="mb-6 block max-w-sm text-sm">
+      <label className="mb-6 block w-full min-w-0 max-w-sm text-sm">
         <span className="mb-1 block text-slate-500">Company</span>
         <select
           value={licenseNumber}
           onChange={(e) => setLicenseNumber(e.target.value)}
-          className="w-full rounded border border-slate-300 bg-white px-3 py-2"
+          className="w-full min-w-0 max-w-full truncate rounded border border-slate-300 bg-white px-3 py-2"
         >
           {licenses.map((l) => (
             <option key={l.license_number} value={l.license_number}>
@@ -231,45 +231,84 @@ export default function SupervisionClient({ userName }: { userName: string }) {
         ) : null}
 
         {operators.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                  <th className="py-2 pr-3 font-medium">Operator</th>
-                  <th className="py-2 pr-3 font-medium">Last open</th>
-                  <th className="py-2 pr-3 font-medium">Last sign-in</th>
-                  <th className="py-2 pr-3 font-medium">Last report</th>
-                  <th className="py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {operators.map((op) => (
-                  <tr key={op.userId} className="border-b border-slate-100 align-top">
-                    <td className="py-3 pr-3">
+          <>
+            <ul className="space-y-3 md:hidden">
+              {operators.map((op) => (
+                <li key={op.userId} className="border border-slate-100 bg-slate-50/50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="font-medium text-slate-900">{op.name}</p>
-                      <p className="text-xs text-slate-500">{op.email}</p>
-                      {op.reminderOverdue ? (
-                        <p className="mt-1 text-xs text-red-800">
-                          Required report due {op.reminderOverdue.dueDate} ·{' '}
-                          {op.reminderOverdue.label}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastOpen)}</td>
-                    <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastSignIn)}</td>
-                    <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastReport)}</td>
-                    <td className="py-3">
-                      <span
-                        className={`inline-block rounded border px-2 py-0.5 text-xs font-semibold ${statusStyles(op.status)}`}
-                      >
-                        {statusLabel(op)}
-                      </span>
-                    </td>
+                      <p className="truncate text-sm text-slate-500">{op.email}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded border px-2 py-0.5 text-xs font-semibold ${statusStyles(op.status)}`}
+                    >
+                      {statusLabel(op)}
+                    </span>
+                  </div>
+                  {op.reminderOverdue ? (
+                    <p className="mt-2 text-sm text-red-800">
+                      Required report due {op.reminderOverdue.dueDate} · {op.reminderOverdue.label}
+                    </p>
+                  ) : null}
+                  <dl className="mt-3 space-y-1 text-sm text-slate-600">
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Last open</dt>
+                      <dd className="text-right">{formatPacific(op.lastOpen)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Last sign-in</dt>
+                      <dd className="text-right">{formatPacific(op.lastSignIn)}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Last report</dt>
+                      <dd className="text-right">{formatPacific(op.lastReport)}</dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="py-2 pr-3 font-medium">Operator</th>
+                    <th className="py-2 pr-3 font-medium">Last open</th>
+                    <th className="py-2 pr-3 font-medium">Last sign-in</th>
+                    <th className="py-2 pr-3 font-medium">Last report</th>
+                    <th className="py-2 font-medium">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {operators.map((op) => (
+                    <tr key={op.userId} className="border-b border-slate-100 align-top">
+                      <td className="py-3 pr-3">
+                        <p className="font-medium text-slate-900">{op.name}</p>
+                        <p className="text-xs text-slate-500">{op.email}</p>
+                        {op.reminderOverdue ? (
+                          <p className="mt-1 text-xs text-red-800">
+                            Required report due {op.reminderOverdue.dueDate} ·{' '}
+                            {op.reminderOverdue.label}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastOpen)}</td>
+                      <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastSignIn)}</td>
+                      <td className="py-3 pr-3 text-slate-700">{formatPacific(op.lastReport)}</td>
+                      <td className="py-3">
+                        <span
+                          className={`inline-block rounded border px-2 py-0.5 text-xs font-semibold ${statusStyles(op.status)}`}
+                        >
+                          {statusLabel(op)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : null}
 
         {operators.some((op) => op.reminderOverdue?.finalNoticeText) ? (

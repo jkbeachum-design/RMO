@@ -19,9 +19,9 @@ export default function AppShell({
   showOfflineChrome?: boolean;
 }) {
   return (
-    <div className="min-h-screen bg-[#f4f6f5] text-slate-900">
+    <div className="min-h-screen max-w-[100vw] overflow-x-hidden bg-[#f4f6f5] text-slate-900">
       <Navbar mode={mode} name={name} />
-      <main className="mx-auto max-w-6xl px-4 pb-24 pt-8">
+      <main className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-24 pt-8">
         {showOfflineChrome ? (
           <>
             <OperatorActivityLogger />

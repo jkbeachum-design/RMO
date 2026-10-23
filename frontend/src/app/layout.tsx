@@ -24,14 +24,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: '#0f2a2a',
   width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1
+  initialScale: 1
+  // Allow pinch-to-zoom; do not lock maximumScale (iOS / accessibility).
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="antialiased">
+    <html lang="en" className="overflow-x-hidden">
+      <body className="max-w-[100vw] overflow-x-hidden antialiased">
         <ServiceWorkerRegister />
         {children}
       </body>

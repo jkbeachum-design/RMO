@@ -226,11 +226,11 @@ export default function RolesClient({ userName }: { userName: string }) {
 
         <section className="space-y-3">
           <h2 className="font-serif text-xl text-slate-900">Permission matrix</h2>
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-left text-sm">
+          <div className="max-w-full overflow-x-auto overscroll-x-contain rounded border border-slate-200">
+            <table className="min-w-[32rem] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4 font-medium">Capability</th>
+                  <th className="sticky left-0 bg-white py-2 pl-3 pr-4 font-medium">Capability</th>
                   {matrix.map((r) => (
                     <th key={r.role} className="px-2 py-2 font-medium">
                       {displayRoleLabel(r.role)}
@@ -241,7 +241,9 @@ export default function RolesClient({ userName }: { userName: string }) {
               <tbody>
                 {CAPABILITIES.map((cap) => (
                   <tr key={cap} className="border-b border-slate-100">
-                    <td className="py-2 pr-4 text-slate-700">{CAPABILITY_LABELS[cap]}</td>
+                    <td className="sticky left-0 bg-white py-2 pl-3 pr-4 text-slate-700">
+                      {CAPABILITY_LABELS[cap]}
+                    </td>
                     {matrix.map((r) => (
                       <td key={r.role} className="px-2 py-2 text-center">
                         {r.capabilities.includes(cap) ? '✓' : '—'}
@@ -265,26 +267,21 @@ export default function RolesClient({ userName }: { userName: string }) {
           <h2 className="font-serif text-xl text-slate-900">Company team</h2>
           {loading ? (
             <p className="text-sm text-slate-500">Loading…</p>
+          ) : !members.length ? (
+            <p className="py-3 text-sm text-slate-500">No memberships loaded yet.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500">
-                    <th className="py-2 pr-3 font-medium">Name</th>
-                    <th className="py-2 pr-3 font-medium">Email</th>
-                    <th className="py-2 pr-3 font-medium">Role</th>
-                    {canManage ? <th className="py-2 font-medium">Actions</th> : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((m) => (
-                    <tr key={m.id} className="border-b border-slate-100">
-                      <td className="py-2 pr-3">{m.name || '—'}</td>
-                      <td className="py-2 pr-3">{m.email || '—'}</td>
-                      <td className="py-2 pr-3">
-                        {canManage ? (
+            <>
+              <ul className="space-y-3 md:hidden">
+                {members.map((m) => (
+                  <li key={m.id} className="border border-slate-200 bg-white p-4">
+                    <p className="font-medium text-slate-900">{m.name || '—'}</p>
+                    <p className="mt-0.5 break-all text-sm text-slate-600">{m.email || '—'}</p>
+                    <div className="mt-3">
+                      {canManage ? (
+                        <label className="block text-sm">
+                          <span className="text-slate-500">Role</span>
                           <select
-                            className="rounded border border-slate-300 px-2 py-1"
+                            className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
                             value={m.role}
                             disabled={saving}
                             onChange={(e) =>
@@ -297,38 +294,90 @@ export default function RolesClient({ userName }: { userName: string }) {
                               </option>
                             ))}
                           </select>
+                        </label>
+                      ) : (
+                        <p className="text-sm text-slate-700">{displayRoleLabel(m.role)}</p>
+                      )}
+                    </div>
+                    {canManage ? (
+                      <div className="mt-3">
+                        {m.user_id === myUserId ? (
+                          <span className="text-sm text-slate-400">You</span>
                         ) : (
-                          displayRoleLabel(m.role)
-                        )}
-                      </td>
-                      {canManage ? (
-                        <td className="py-2">
-                          {m.user_id === myUserId ? (
-                            <span className="text-xs text-slate-400">You</span>
-                          ) : (
                           <button
                             type="button"
-                            className="text-xs text-red-700 hover:underline"
+                            className="text-sm text-red-700 hover:underline"
                             disabled={saving}
                             onClick={() => void onRemove(m.id, m.name || m.email || 'this person')}
                           >
                             Remove from this license
                           </button>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+
+              <div className="hidden overflow-x-auto md:block">
+                <table className="min-w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th className="py-2 pr-3 font-medium">Name</th>
+                      <th className="py-2 pr-3 font-medium">Email</th>
+                      <th className="py-2 pr-3 font-medium">Role</th>
+                      {canManage ? <th className="py-2 font-medium">Actions</th> : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((m) => (
+                      <tr key={m.id} className="border-b border-slate-100">
+                        <td className="py-2 pr-3">{m.name || '—'}</td>
+                        <td className="py-2 pr-3">{m.email || '—'}</td>
+                        <td className="py-2 pr-3">
+                          {canManage ? (
+                            <select
+                              className="rounded border border-slate-300 px-2 py-1"
+                              value={m.role}
+                              disabled={saving}
+                              onChange={(e) =>
+                                void onChangeRole(m.id, e.target.value as UserRole)
+                              }
+                            >
+                              {ALL_ROLES.map((r) => (
+                                <option key={r} value={r}>
+                                  {displayRoleLabel(r)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            displayRoleLabel(m.role)
                           )}
                         </td>
-                      ) : null}
-                    </tr>
-                  ))}
-                  {!members.length ? (
-                    <tr>
-                      <td colSpan={4} className="py-3 text-slate-500">
-                        No memberships loaded yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+                        {canManage ? (
+                          <td className="py-2">
+                            {m.user_id === myUserId ? (
+                              <span className="text-xs text-slate-400">You</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-xs text-red-700 hover:underline"
+                                disabled={saving}
+                                onClick={() =>
+                                  void onRemove(m.id, m.name || m.email || 'this person')
+                                }
+                              >
+                                Remove from this license
+                              </button>
+                            )}
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
 
           {invites.length ? (

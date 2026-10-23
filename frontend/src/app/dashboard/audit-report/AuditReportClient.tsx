@@ -23,6 +23,7 @@ function AuditReportInner({ userName }: { userName: string }) {
   const licenseFromQuery = searchParams.get('license');
   const signatureRef = useRef<SignatureCanvas | null>(null);
   const reportRef = useRef<HTMLDivElement | null>(null);
+  const padContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [licenseNumber, setLicenseNumber] = useState(licenseFromQuery || '');
   const [license, setLicense] = useState<License | null>(null);
@@ -30,6 +31,20 @@ function AuditReportInner({ userName }: { userName: string }) {
   const [notes, setNotes] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [padWidth, setPadWidth] = useState(320);
+
+  useEffect(() => {
+    const el = padContainerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const update = () => {
+      const next = Math.max(240, Math.floor(el.clientWidth));
+      setPadWidth(next);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loading, license, report]);
 
   useEffect(() => {
     setLoading(true);
@@ -105,13 +120,15 @@ function AuditReportInner({ userName }: { userName: string }) {
     );
   }
 
+  const padHeight = Math.max(100, Math.round(padWidth * 0.24));
+
   return (
     <AppShell mode="RMO" name={userName}>
-      <h1 className="mb-6 font-serif text-4xl">Monthly Audit Report</h1>
+      <h1 className="mb-6 font-serif text-3xl sm:text-4xl">Monthly Audit Report</h1>
 
-      <div ref={reportRef} className="mb-8 border border-slate-300 bg-white p-8">
-        <h2 className="text-2xl font-semibold">Monthly Compliance Audit Report</h2>
-        <p className="mt-1 text-slate-600">
+      <div ref={reportRef} className="mb-8 border border-slate-300 bg-white p-4 sm:p-8">
+        <h2 className="text-xl font-semibold sm:text-2xl">Monthly Compliance Audit Report</h2>
+        <p className="mt-1 break-words text-slate-600">
           {license.entity_name} (License #{license.license_number})
         </p>
         <p className="text-slate-600">{report.month}</p>
@@ -168,7 +185,7 @@ function AuditReportInner({ userName }: { userName: string }) {
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="h-24 w-full rounded border border-slate-300 p-3 text-sm"
+            className="h-24 w-full rounded border border-slate-300 p-3"
             placeholder="Add notes about this month's supervision…"
           />
         </section>
@@ -178,16 +195,19 @@ function AuditReportInner({ userName }: { userName: string }) {
           <p className="mb-2 text-sm text-slate-600">
             Sign below to certify this audit report.
           </p>
-          <SignatureCanvas
-            ref={(ref) => {
-              signatureRef.current = ref;
-            }}
-            canvasProps={{
-              width: 500,
-              height: 120,
-              className: 'border-2 border-slate-400 rounded max-w-full bg-white'
-            }}
-          />
+          <div ref={padContainerRef} className="w-full max-w-full sm:max-w-[500px]">
+            <SignatureCanvas
+              key={padWidth}
+              ref={(ref) => {
+                signatureRef.current = ref;
+              }}
+              canvasProps={{
+                width: padWidth,
+                height: padHeight,
+                className: 'border-2 border-slate-400 rounded w-full max-w-full bg-white touch-none'
+              }}
+            />
+          </div>
           <button
             type="button"
             onClick={() => signatureRef.current?.clear()}

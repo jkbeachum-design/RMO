@@ -106,10 +106,12 @@ export default async function DashboardPage({
 
   return (
     <AppShell mode="RMO" name={session.name}>
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
+      <div className="mb-8 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <p className="text-sm uppercase tracking-wide text-slate-500">RMO Dashboard</p>
-          <h1 className="font-serif text-4xl text-slate-900">{data.license.entity_name}</h1>
+          <h1 className="break-words font-serif text-3xl text-slate-900 sm:text-4xl">
+            {data.license.entity_name}
+          </h1>
           <p className="mt-1 text-slate-600">
             License #{data.license.license_number} · {data.license.classification} · WC{' '}
             {data.license.workers_comp_status}
@@ -145,18 +147,18 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <div className="mb-4 flex items-center justify-between gap-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-semibold text-slate-900">Recent compliance logs</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link
             href={`/dashboard/audit-report?license=${licenseNumber}`}
-            className="rounded bg-[#0f2a2a] px-4 py-2 text-sm font-medium text-white hover:bg-[#163838]"
+            className="rounded bg-[#0f2a2a] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#163838]"
           >
             Monthly audit
           </Link>
           <Link
             href={`/dashboard/compliance-log?license=${licenseNumber}`}
-            className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+            className="rounded border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 hover:bg-slate-50"
           >
             Full log
           </Link>

@@ -110,55 +110,93 @@ export default async function OperatorProjectsPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 bg-white">
-        <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Address</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Permit</th>
-              <th className="px-4 py-3">Updated</th>
-            </tr>
-          </thead>
-          <tbody>
+      {!list.length ? (
+        <p className="border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-slate-500">
+          No projects yet. Add one, or include a new address on a report.
+        </p>
+      ) : (
+        <>
+          <ul className="space-y-3 md:hidden">
             {list.map((p) => (
-              <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/operator/projects/${p.id}?license=${encodeURIComponent(current)}`}
-                    className="font-medium text-teal-900 hover:underline"
-                  >
-                    {p.project_address || '—'}
-                  </Link>
-                  {p.contract_value != null ? (
-                    <span className="mt-0.5 block text-xs text-slate-500">
-                      ${Number(p.contract_value).toLocaleString()}
+              <li key={p.id}>
+                <Link
+                  href={`/operator/projects/${p.id}?license=${encodeURIComponent(current)}`}
+                  className="block border border-slate-200 bg-white p-4 hover:border-teal-700"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900">{p.project_address || '—'}</p>
+                      {p.contract_value != null ? (
+                        <p className="mt-0.5 text-sm text-slate-500">
+                          ${Number(p.contract_value).toLocaleString()}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span
+                      className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${projectStatusClass(p.status)}`}
+                    >
+                      {projectStatusLabel(p.status)}
                     </span>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${projectStatusClass(p.status)}`}
-                  >
-                    {projectStatusLabel(p.status)}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{p.permit_number || '—'}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {p.updated_at ? format(new Date(p.updated_at), 'PP') : '—'}
-                </td>
-              </tr>
+                  </div>
+                  <dl className="mt-3 space-y-1 text-sm text-slate-600">
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Permit</dt>
+                      <dd className="truncate text-right">{p.permit_number || '—'}</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-slate-500">Updated</dt>
+                      <dd>{p.updated_at ? format(new Date(p.updated_at), 'PP') : '—'}</dd>
+                    </div>
+                  </dl>
+                </Link>
+              </li>
             ))}
-            {!list.length ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                  No projects yet. Add one, or include a new address on a report.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+          </ul>
+
+          <div className="hidden overflow-x-auto border border-slate-200 bg-white md:block">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Address</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Permit</th>
+                  <th className="px-4 py-3">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((p) => (
+                  <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/operator/projects/${p.id}?license=${encodeURIComponent(current)}`}
+                        className="font-medium text-teal-900 hover:underline"
+                      >
+                        {p.project_address || '—'}
+                      </Link>
+                      {p.contract_value != null ? (
+                        <span className="mt-0.5 block text-xs text-slate-500">
+                          ${Number(p.contract_value).toLocaleString()}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${projectStatusClass(p.status)}`}
+                      >
+                        {projectStatusLabel(p.status)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{p.permit_number || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {p.updated_at ? format(new Date(p.updated_at), 'PP') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </AppShell>
   );
 }

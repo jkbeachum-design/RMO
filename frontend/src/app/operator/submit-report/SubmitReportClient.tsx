@@ -960,6 +960,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                         next[idx] = { ...next[idx], coiFile: file };
                         setSubcontractors(next);
                       }}
+                      className="block w-full max-w-full min-w-0"
                     />
                     <p className="mt-1 text-xs text-slate-500">
                       Max 5MB · tied only to this subcontractor (not shared across subs)
@@ -1053,6 +1054,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                   multiple
                   accept=".pdf,.jpg,.jpeg,.png"
                   onChange={(e) => setPermits(validateFiles(e.target.files))}
+                  className="block w-full max-w-full min-w-0"
                 />
                 <FileList
                   files={permits}
@@ -1068,6 +1070,7 @@ export default function SubmitReportClient({ userName }: { userName: string }) {
                   multiple
                   accept=".jpg,.jpeg,.png"
                   onChange={(e) => setPhotos(validateFiles(e.target.files))}
+                  className="block w-full max-w-full min-w-0"
                 />
                 <FileList
                   files={photos}
