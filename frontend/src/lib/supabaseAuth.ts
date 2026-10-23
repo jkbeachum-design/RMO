@@ -14,13 +14,19 @@ function anonKey(): string {
   return key;
 }
 
-/** Ephemeral anon client for password sign-in (does not persist cookies). */
+/**
+ * Ephemeral anon client for password sign-in and server-initiated recovery emails.
+ * Uses implicit flow so resetPasswordForEmail links land with #access_token=
+ * (no PKCE code verifier — those cannot be shared from this Node process to the
+ * user's browser / mobile Safari).
+ */
 export function createAuthPasswordClient() {
   return createClient(supabaseUrl(), anonKey(), {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
-      detectSessionInUrl: false
+      detectSessionInUrl: false,
+      flowType: 'implicit'
     }
   });
 }

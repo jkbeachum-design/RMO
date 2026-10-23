@@ -4,8 +4,15 @@ import { FormEvent, Suspense, useEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { establishRecoverySession } from '@/lib/authRecovery';
 import { validateNewPassword } from '@/lib/passwordPolicy';
 
+/**
+ * Browser Auth client for password recovery only.
+ * Must NOT use flowType:'pkce' with detectSessionInUrl — server-sent recovery
+ * emails use the implicit hash, and auth-js rejects that combination.
+ * We parse callbacks ourselves via establishRecoverySession.
+ */
 function browserAuthClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -16,8 +23,8 @@ function browserAuthClient(): SupabaseClient {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce'
+      detectSessionInUrl: false,
+      flowType: 'implicit'
     }
   });
 }
@@ -34,7 +41,7 @@ function ResetPasswordForm() {
   useEffect(() => {
     let cancelled = false;
 
-    async function establishRecoverySession() {
+    async function run() {
       if (searchParams.get('error') === 'invalid_or_expired') {
         if (!cancelled) setStatus('invalid');
         return;
@@ -42,51 +49,22 @@ function ResetPasswordForm() {
 
       try {
         const supabase = browserAuthClient();
-        const code = searchParams.get('code');
-        const token_hash = searchParams.get('token_hash');
-        const type = searchParams.get('type');
-
-        if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) {
-            console.warn('exchangeCodeForSession:', exchangeError.message);
-            if (!cancelled) {
-              setError('This reset link is invalid or has expired. Request a new one.');
-              setStatus('invalid');
-            }
-            return;
-          }
-        } else if (token_hash && type) {
-          const { error: otpError } = await supabase.auth.verifyOtp({
-            token_hash,
-            type: type as 'recovery' | 'email' | 'signup' | 'invite' | 'magiclink' | 'email_change'
-          });
-          if (otpError) {
-            console.warn('verifyOtp:', otpError.message);
-            if (!cancelled) {
-              setError('This reset link is invalid or has expired. Request a new one.');
-              setStatus('invalid');
-            }
-            return;
-          }
+        // Prefer full href so hash fragments (#access_token=…) are included —
+        // useSearchParams() only sees the query string.
+        const href =
+          typeof window !== 'undefined' ? window.location.href : `http://local.invalid/?${searchParams.toString()}`;
+        const result = await establishRecoverySession(supabase, href);
+        if (cancelled) return;
+        if (!result.ok) {
+          setError(result.message);
+          setStatus('invalid');
+          return;
         }
-
-        // Implicit flow: tokens in hash are picked up by detectSessionInUrl
-        const { data } = await supabase.auth.getSession();
-        if (!data.session) {
-          // Give hash parsing a tick on first paint
-          await new Promise((r) => setTimeout(r, 50));
-          const again = await supabase.auth.getSession();
-          if (!again.data.session) {
-            if (!cancelled) {
-              setError('Open the link from your email to set a new password.');
-              setStatus('invalid');
-            }
-            return;
-          }
+        // Drop tokens / codes from the address bar so they are not left in history.
+        if (typeof window !== 'undefined') {
+          window.history.replaceState(window.history.state, '', window.location.pathname);
         }
-
-        if (!cancelled) setStatus('ready');
+        setStatus('ready');
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Could not start password reset');
@@ -95,7 +73,7 @@ function ResetPasswordForm() {
       }
     }
 
-    void establishRecoverySession();
+    void run();
     return () => {
       cancelled = true;
     };
