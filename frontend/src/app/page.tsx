@@ -3,6 +3,13 @@
 import { FormEvent, Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+const LOGIN_TIMEOUT_MS = 15000;
+
+type LoginResponse = {
+  error?: string;
+  user?: { mode?: string; licenseIds?: string[] };
+};
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -11,24 +18,56 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (loading) return;
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail !== email) setEmail(cleanEmail);
     setLoading(true);
     setError('');
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
+    let data: LoginResponse = {};
 
-    const data = await res.json();
-    setLoading(false);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password }),
+        cache: 'no-store',
+        signal: controller.signal
+      });
 
-    if (!res.ok) {
-      setError(data.error || 'Login failed');
+      try {
+        data = (await res.json()) as LoginResponse;
+      } catch {
+        data = {};
+      }
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError(
+            `${data.error || 'Invalid email or password'}. Double-check the email spelling (you typed ${cleanEmail}) and the password, then try again.`
+          );
+        } else {
+          setError(data.error || `Sign-in failed (error ${res.status}). Please try again.`);
+        }
+        return;
+      }
+    } catch (err) {
+      const aborted = (err as { name?: string })?.name === 'AbortError';
+      setError(
+        aborted
+          ? 'Sign-in is taking too long. Check your internet connection and tap Sign in again.'
+          : 'Could not reach the server. Check your internet connection and tap Sign in again.'
+      );
       return;
+    } finally {
+      clearTimeout(timer);
+      setLoading(false);
     }
 
     // Lightweight sign_in activity — never blocks navigation
@@ -44,8 +83,14 @@ function LoginForm() {
       /* ignore */
     }
 
-    router.push(data.user?.mode === 'OPERATOR' ? '/operator' : '/dashboard');
+    setRedirecting(true);
+    const dest = data.user?.mode === 'OPERATOR' ? '/operator' : '/dashboard';
+    router.push(dest);
     router.refresh();
+    // Fallback: if client navigation stalls (e.g. flaky mobile network), hard-navigate.
+    setTimeout(() => {
+      if (window.location.pathname === '/') window.location.assign(dest);
+    }, 4000);
   }
 
   return (
@@ -78,9 +123,14 @@ function LoginForm() {
             <span className="mb-1 block text-teal-100/70">Email</span>
             <input
               type="email"
+              inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={(e) => setEmail(e.target.value.trim().toLowerCase())}
               autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className="w-full rounded border border-white/20 bg-black/20 px-3 py-2 text-white outline-none focus:border-teal-300"
               required
             />
@@ -104,7 +154,11 @@ function LoginForm() {
             </a>
           </div>
 
-          {error ? <p className="text-sm text-amber-200">{error}</p> : null}
+          {error ? (
+            <p role="alert" className="text-sm text-amber-200">
+              {error}
+            </p>
+          ) : null}
           {searchParams.get('reset') === '1' ? (
             <p className="text-sm text-teal-200">Password updated. Sign in with your new password.</p>
           ) : null}
@@ -116,10 +170,10 @@ function LoginForm() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || redirecting}
             className="w-full rounded bg-teal-500 px-4 py-2.5 text-sm font-semibold text-[#042f2e] hover:bg-teal-400 disabled:opacity-60"
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {redirecting ? 'Opening…' : loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 
