@@ -115,7 +115,15 @@ export async function evaluateLicenseDues(input: {
     .from('user_licenses')
     .select('user_id, role, users(id, user_name, user_email)')
     .eq('license_id', input.licenseId)
-    .in('role', ['OPERATOR', 'FOREMAN', 'PM']);
+    .in('role', ['OPERATOR', 'FOREMAN', 'PM', 'RMO', 'ADMIN']);
+
+  // The RMO/admin supervises; they are never required to file reports, even if
+  // they also hold an OPERATOR row on the license.
+  const supervisorIds = new Set(
+    (members || [])
+      .filter((m) => m.role === 'RMO' || m.role === 'ADMIN')
+      .map((m) => m.user_id as string)
+  );
 
   const operatorsMap = new Map<string, { id: string; name: string; email: string }>();
   for (const row of members || []) {
@@ -124,7 +132,8 @@ export async function evaluateLicenseDues(input: {
       user_name?: string;
       user_email?: string;
     } | null;
-    if (!u?.id || operatorsMap.has(u.id)) continue;
+    if (!u?.id || operatorsMap.has(u.id) || supervisorIds.has(u.id)) continue;
+    if (row.role === 'RMO' || row.role === 'ADMIN') continue;
     operatorsMap.set(u.id, {
       id: u.id,
       name: (u.user_name || u.user_email || 'Operator').trim(),
@@ -220,7 +229,24 @@ export async function evaluateLicenseDues(input: {
   return { operators, dues, reportYmdsByUser, licenseReportYmds };
 }
 
-function isDueSatisfied(due: DueItem, reportYmds: string[], cadenceDates: string[]): boolean {
+function isDueSatisfied(
+  due: DueItem,
+  reportYmds: string[],
+  cadenceDates: string[],
+  todayYmd?: string
+): boolean {
+  // A report filed late (after the due date, up to today) stops further
+  // past-due / overdue escalation for that due. For cadence dues the late
+  // report must land before the next cadence due date.
+  if (todayYmd && todayYmd > due.dueDate) {
+    let lateEnd = todayYmd;
+    if (due.dueKind === 'cadence') {
+      const idx = cadenceDates.indexOf(due.dueDate);
+      const next = idx >= 0 && idx + 1 < cadenceDates.length ? cadenceDates[idx + 1] : null;
+      if (next && next < lateEnd) lateEnd = next;
+    }
+    if (reportYmds.some((r) => r > due.dueDate && r <= lateEnd)) return true;
+  }
   if (due.dueKind === 'cadence') {
     const idx = cadenceDates.indexOf(due.dueDate);
     const prev = idx > 0 ? cadenceDates[idx - 1] : null;
@@ -353,7 +379,7 @@ export async function processLicenseReminders(input: {
             ? evaluated.licenseReportYmds
             : reports;
 
-      if (isDueSatisfied(due, effective, cadenceDates)) continue;
+      if (isDueSatisfied(due, effective, cadenceDates, todayYmd)) continue;
 
       const base = {
         license_id: input.licenseId,
@@ -579,7 +605,7 @@ export async function getOperatorDueBanner(input: {
 
     let best: OperatorDueStatus | null = null;
     for (const due of evaluated.dues) {
-      if (isDueSatisfied(due, effective, cadenceDates)) continue;
+      if (isDueSatisfied(due, effective, cadenceDates, todayYmd)) continue;
       const delta = daysBetweenYmd(todayYmd, due.dueDate);
       const overdue = delta < 0;
       const daysUntil = overdue ? null : delta;
@@ -676,7 +702,7 @@ export async function getOperatorReminderFlags(input: {
 
     for (const due of evaluated.dues) {
       if (due.dueDate > todayYmd) continue;
-      if (isDueSatisfied(due, effective, cadenceDates)) continue;
+      if (isDueSatisfied(due, effective, cadenceDates, todayYmd)) continue;
       const daysOverdue = daysBetweenYmd(due.dueDate, todayYmd);
       if (daysOverdue < 3) continue;
       const finalNoticeText =
