@@ -108,6 +108,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // RMO-only project lifecycle pushes (never to CEO).
+  try {
+    const { notifyRmosOfProjectChange } = await import('@/lib/rmoPushEvents');
+    const { pacificYmd } = await import('@/lib/reportReminderSchedule');
+    await notifyRmosOfProjectChange({
+      licenseId: resolved.license.id,
+      companyName: resolved.license.entity_name || undefined,
+      address,
+      action: 'created',
+      eventYmd: pacificYmd(),
+      userId: live.userId
+    });
+    if (row.start_date) {
+      await notifyRmosOfProjectChange({
+        licenseId: resolved.license.id,
+        companyName: resolved.license.entity_name || undefined,
+        address,
+        action: 'started',
+        eventYmd: String(row.start_date).slice(0, 10),
+        userId: live.userId
+      });
+    }
+    if (status === 'COMPLETED') {
+      await notifyRmosOfProjectChange({
+        licenseId: resolved.license.id,
+        companyName: resolved.license.entity_name || undefined,
+        address,
+        action: 'completed',
+        eventYmd: String(row.end_date || '').slice(0, 10) || pacificYmd(),
+        userId: live.userId
+      });
+    }
+  } catch (pushErr) {
+    console.warn('project create RMO push skipped:', pushErr);
+  }
+
   return NextResponse.json({ project: data });
 }
 
@@ -127,7 +163,7 @@ export async function PATCH(req: Request) {
   const supabase = getSupabaseAdmin();
   const { data: existing } = await supabase
     .from('projects')
-    .select('id, license_id')
+    .select('id, license_id, project_address, start_date, status, end_date')
     .eq('id', id)
     .maybeSingle();
 
@@ -197,6 +233,44 @@ export async function PATCH(req: Request) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  try {
+    const { notifyRmosOfProjectChange } = await import('@/lib/rmoPushEvents');
+    const { pacificYmd } = await import('@/lib/reportReminderSchedule');
+    const { data: lic } = await supabase
+      .from('licenses')
+      .select('entity_name')
+      .eq('id', existing.license_id)
+      .maybeSingle();
+    const address = String(data.project_address || existing.project_address || 'project');
+    const companyName = lic?.entity_name || undefined;
+    const prevStart = existing.start_date ? String(existing.start_date).slice(0, 10) : null;
+    const nextStart = data.start_date ? String(data.start_date).slice(0, 10) : null;
+    if (nextStart && nextStart !== prevStart) {
+      await notifyRmosOfProjectChange({
+        licenseId: existing.license_id,
+        companyName,
+        address,
+        action: 'started',
+        eventYmd: nextStart,
+        userId: live.userId
+      });
+    }
+    const prevStatus = String(existing.status || '').toUpperCase();
+    const nextStatus = String(data.status || '').toUpperCase();
+    if (nextStatus === 'COMPLETED' && prevStatus !== 'COMPLETED') {
+      await notifyRmosOfProjectChange({
+        licenseId: existing.license_id,
+        companyName,
+        address,
+        action: 'completed',
+        eventYmd: String(data.end_date || '').slice(0, 10) || pacificYmd(),
+        userId: live.userId
+      });
+    }
+  } catch (pushErr) {
+    console.warn('project update RMO push skipped:', pushErr);
   }
 
   return NextResponse.json({ project: data });

@@ -282,9 +282,30 @@ export async function POST(req: NextRequest) {
       [{ user_id: user.id, license_id: licenseId, role }],
       { onConflict: 'user_id,license_id,role' }
     );
+    // Invite immediately grants membership — treat as accepted join for RMO push.
+    await supabase
+      .from('company_invites')
+      .update({ status: 'ACCEPTED' })
+      .eq('id', invite.id);
+    try {
+      const { data: lic } = await supabase
+        .from('licenses')
+        .select('entity_name')
+        .eq('id', licenseId)
+        .maybeSingle();
+      const { notifyRmosOfNewUser } = await import('@/lib/rmoPushEvents');
+      await notifyRmosOfNewUser({
+        licenseId,
+        companyName: lic?.entity_name || 'company',
+        userName: user.user_name || email,
+        userId: user.id
+      });
+    } catch (pushErr) {
+      console.warn('invite RMO push skipped:', pushErr);
+    }
     return NextResponse.json({
       ok: true,
-      invite,
+      invite: { ...invite, status: 'ACCEPTED' },
       temporary_password: temporaryPassword,
       user_id: user.id
     });
@@ -299,6 +320,23 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  try {
+    const { data: lic } = await supabase
+      .from('licenses')
+      .select('entity_name')
+      .eq('id', licenseId)
+      .maybeSingle();
+    const { notifyRmosOfNewUser } = await import('@/lib/rmoPushEvents');
+    await notifyRmosOfNewUser({
+      licenseId,
+      companyName: lic?.entity_name || 'company',
+      userName: user.user_name || email,
+      userId: user.id
+    });
+  } catch (pushErr) {
+    console.warn('add-member RMO push skipped:', pushErr);
+  }
 
   return NextResponse.json({
     ok: true,

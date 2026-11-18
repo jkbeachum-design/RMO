@@ -10,6 +10,10 @@ import {
   processLicenseReminders,
   type ReminderActionPreview
 } from '@/lib/reportReminders';
+import {
+  notifyRmosDigestHeartbeat,
+  notifyRmosOfDigestFailure
+} from '@/lib/rmoPushEvents';
 
 type SettingsRow = Record<string, unknown>;
 
@@ -104,6 +108,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  try {
   const supabase = getSupabaseAdmin();
   let licensesQuery = supabase.from('licenses').select('*');
   if (allowedIds) licensesQuery = licensesQuery.in('id', allowedIds);
@@ -128,20 +133,18 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     const settings = settingsFromRow(settingsRow);
     const reminderSettings = mergeReminderSettings(settingsRow);
-    // Reminders run even when digest email is disabled (separate toggle).
-    if (reminderSettings.reminder_enabled) {
-      try {
-        const actions = await processLicenseReminders({
-          licenseId: license.id,
-          licenseNumber: license.license_number,
-          entityName: license.entity_name || 'company',
-          settings: reminderSettings,
-          dryRun
-        });
-        reminderActions.push(...actions);
-      } catch (err) {
-        console.warn('report reminders failed for', license.license_number, err);
-      }
+    // Always evaluate reminders (including reminders-off push). Email/ntfy still honor toggles inside.
+    try {
+      const actions = await processLicenseReminders({
+        licenseId: license.id,
+        licenseNumber: license.license_number,
+        entityName: license.entity_name || 'company',
+        settings: reminderSettings,
+        dryRun
+      });
+      reminderActions.push(...actions);
+    } catch (err) {
+      console.warn('report reminders failed for', license.license_number, err);
     }
 
     if (!settings.digest_enabled && kind === 'MORNING') continue;
@@ -391,6 +394,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  if (isCron && !dryRun && (licenses || []).length) {
+    try {
+      await notifyRmosDigestHeartbeat((licenses || [])[0].id);
+    } catch (err) {
+      console.warn('digest heartbeat push failed', err);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     kind,
@@ -399,6 +410,21 @@ export async function POST(req: NextRequest) {
     results,
     reminders: reminderActions
   });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Daily reminder job FAILED', err);
+    if (!dryRun) {
+      try {
+        await notifyRmosOfDigestFailure(message);
+      } catch (pushErr) {
+        console.error('digest failure push failed', pushErr);
+      }
+    }
+    return NextResponse.json(
+      { ok: false, error: 'Daily reminder job FAILED', detail: message, dryRun },
+      { status: 500 }
+    );
+  }
 }
 
 /** Vercel Cron issues GET with `Authorization: Bearer $CRON_SECRET`. GET is cron-only (no session-triggered sends). */

@@ -108,5 +108,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  try {
+    const { notifyRmosOfCeoUpload } = await import('@/lib/rmoPushEvents');
+    await notifyRmosOfCeoUpload({
+      userId: live.userId,
+      userName: live.name,
+      licenseId: resolved.license.id,
+      companyName: resolved.license.entity_name || undefined,
+      title
+    });
+  } catch (pushErr) {
+    console.warn('document upload RMO push skipped:', pushErr);
+  }
+
   return NextResponse.json({ document: data });
 }

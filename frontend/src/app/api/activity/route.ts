@@ -112,6 +112,37 @@ export async function POST(req: Request) {
       );
     }
 
+    // RMO-only pushes for CEO portal activity (never to the CEO).
+    if (live.mode === 'OPERATOR') {
+      try {
+        const { data: lic } = await supabase
+          .from('licenses')
+          .select('entity_name')
+          .eq('id', licenseUuid)
+          .maybeSingle();
+        const companyName = lic?.entity_name || undefined;
+        if (event === 'sign_in') {
+          const { notifyRmosOfCeoSignIn } = await import('@/lib/rmoPushEvents');
+          await notifyRmosOfCeoSignIn({
+            userId: live.userId,
+            userName: live.name,
+            licenseId: licenseUuid,
+            companyName
+          });
+        } else if (event === 'report_started') {
+          const { notifyRmosOfReportStarted } = await import('@/lib/rmoPushEvents');
+          await notifyRmosOfReportStarted({
+            userId: live.userId,
+            userName: live.name,
+            licenseId: licenseUuid,
+            companyName
+          });
+        }
+      } catch (pushErr) {
+        console.warn('activity RMO push failed:', pushErr);
+      }
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.warn('activity POST failed:', err);

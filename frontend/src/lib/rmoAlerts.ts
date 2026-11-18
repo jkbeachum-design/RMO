@@ -1,9 +1,30 @@
 import { getSupabaseAdmin } from './supabase';
 import { filterAlertEmails, parseCsvEnv } from './alertRecipients';
+import { pacificYmd } from './reportReminderSchedule';
+import {
+  claimMemoryDedupe,
+  formatNtfyTitle,
+  recordFailedLoginAttempt as recordFailedLoginAttemptPure,
+  type NtfyPriority
+} from './rmoAlertFormat';
+
+export {
+  RMO_TITLE_PREFIX,
+  REMINDER_FAILURE_REASONS,
+  buildReminderEmailPush,
+  buildRemindersOffPush,
+  claimMemoryDedupe,
+  formatNtfyTitle,
+  isReminderDeliveryFailure,
+  sanitizeNtfyTitle,
+  shouldNotifyRemindersOff
+} from './rmoAlertFormat';
+export type { NtfyPriority } from './rmoAlertFormat';
 
 /**
- * Outside-portal alerts to RMOs (ntfy push + Resend email) when a CEO submits a report.
+ * Outside-portal alerts to RMOs (ntfy push + Resend email).
  * RMO-only: never call these with CEO recipients. Flag details are included only here.
+ * Review flags never go to CEO-facing UI, data, or messages.
  */
 
 export type AlertSettings = {
@@ -13,6 +34,25 @@ export type AlertSettings = {
   alert_emails: string | null;
   notify_new_report: boolean;
   notify_flagged: boolean;
+};
+
+export type NtfyMessage = {
+  title: string;
+  message: string;
+  click?: string;
+  tags?: string;
+  priority?: NtfyPriority;
+};
+
+export type NotifyRmosOpts = {
+  /** Unique key; when set, at most one real send is recorded in rmo_push_log. */
+  dedupeKey?: string;
+  /** If a matching dedupe_key exists within this many hours, skip (default: forever via unique key). */
+  dedupeHours?: number;
+  dryRun?: boolean;
+  kind?: string;
+  /** Optional CEO/subject user for the log row. */
+  userId?: string | null;
 };
 
 export const DEFAULT_NTFY_SERVER = 'https://ntfy.sh';
@@ -61,12 +101,13 @@ export function isSafeNtfyServer(url: string): boolean {
 
 export async function sendNtfy(
   s: Pick<AlertSettings, 'ntfy_server' | 'ntfy_topic' | 'ntfy_token'>,
-  msg: { title: string; message: string; click?: string; tags?: string; priority?: 'default' | 'high' }
-): Promise<{ ok: boolean; status?: number; skipped?: string }> {
+  msg: NtfyMessage
+): Promise<{ ok: boolean; status?: number; skipped?: string; title?: string }> {
   if (!s.ntfy_topic) return { ok: false, skipped: 'no_topic' };
   if (!isSafeNtfyServer(s.ntfy_server)) return { ok: false, skipped: 'bad_server' };
+  const title = formatNtfyTitle(msg.title);
   const headers: Record<string, string> = {
-    Title: msg.title.replace(/[^\x20-\x7E]/g, '-').slice(0, 200),
+    Title: title,
     Priority: msg.priority || 'default',
     Tags: msg.tags || 'clipboard'
   };
@@ -79,9 +120,9 @@ export async function sendNtfy(
       body: msg.message.slice(0, 3500),
       signal: AbortSignal.timeout(5000)
     });
-    return { ok: res.ok, status: res.status };
+    return { ok: res.ok, status: res.status, title };
   } catch {
-    return { ok: false, skipped: 'network' };
+    return { ok: false, skipped: 'network', title };
   }
 }
 
@@ -165,6 +206,178 @@ export function buildReportAlert(input: {
   };
 }
 
+/** In-memory dedupe store used as a fast path across warm instances. */
+const memoryDedupe = new Map<string, number>();
+
+export function clearMemoryDedupe(store: Map<string, number> = memoryDedupe): void {
+  store.clear();
+}
+
+function claimProcessDedupe(key: string, dedupeHours?: number): { claimed: boolean; reason?: 'duplicate' } {
+  return claimMemoryDedupe(key, dedupeHours, memoryDedupe);
+}
+
+async function claimPushDedupe(input: {
+  licenseId: string;
+  dedupeKey: string;
+  dedupeHours?: number;
+  kind: string;
+  userId?: string | null;
+  payload: Record<string, unknown>;
+  dryRun: boolean;
+}): Promise<{ claimed: boolean; skipped?: string }> {
+  // Dry-run never writes and must not poison in-memory / DB dedupe state.
+  if (input.dryRun) {
+    return { claimed: true, skipped: 'dry_run' };
+  }
+
+  const mem = claimProcessDedupe(input.dedupeKey, input.dedupeHours);
+  if (!mem.claimed) return { claimed: false, skipped: 'deduped' };
+
+  const supabase = getSupabaseAdmin();
+  if (input.dedupeHours != null && input.dedupeHours > 0) {
+    const since = new Date(Date.now() - input.dedupeHours * 60 * 60 * 1000).toISOString();
+    const { data: existing } = await supabase
+      .from('rmo_push_log')
+      .select('id, created_at')
+      .eq('dedupe_key', input.dedupeKey)
+      .gte('created_at', since)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) return { claimed: false, skipped: 'deduped' };
+  } else {
+    const { data: existing } = await supabase
+      .from('rmo_push_log')
+      .select('id')
+      .eq('dedupe_key', input.dedupeKey)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) return { claimed: false, skipped: 'deduped' };
+  }
+
+  const { error } = await supabase.from('rmo_push_log').insert([
+    {
+      license_id: input.licenseId,
+      user_id: input.userId || null,
+      kind: input.kind,
+      dedupe_key: input.dedupeKey,
+      payload: input.payload
+    }
+  ]);
+  if (error) {
+    // Unique violation → already sent
+    if (/duplicate|unique/i.test(error.message || '')) {
+      return { claimed: false, skipped: 'deduped' };
+    }
+    console.warn('rmo_push_log insert failed:', error.message);
+    // Still allow send if logging failed for a non-unique reason
+  }
+  return { claimed: true };
+}
+
+export type NotifyRmosResult = {
+  ok: boolean;
+  skipped?: string;
+  dryRun?: boolean;
+  title: string;
+  results: Array<Record<string, unknown>>;
+};
+
+/**
+ * Fan out an ntfy push to every RMO/ADMIN on the license (per their settings).
+ * Never throws. Optional dedupe via rmo_push_log.dedupe_key.
+ */
+export async function notifyRmos(
+  licenseId: string,
+  msg: NtfyMessage,
+  opts: NotifyRmosOpts = {}
+): Promise<NotifyRmosResult> {
+  const title = formatNtfyTitle(msg.title);
+  const dryRun = Boolean(opts.dryRun);
+  const kind = opts.kind || 'generic';
+  const results: Array<Record<string, unknown>> = [];
+
+  try {
+    if (opts.dedupeKey) {
+      const claim = await claimPushDedupe({
+        licenseId,
+        dedupeKey: opts.dedupeKey,
+        dedupeHours: opts.dedupeHours,
+        kind,
+        userId: opts.userId,
+        payload: {
+          title: msg.title,
+          message: msg.message.slice(0, 500),
+          priority: msg.priority || 'default',
+          tags: msg.tags || null,
+          dryRun
+        },
+        dryRun
+      });
+      if (!claim.claimed) {
+        return { ok: false, skipped: claim.skipped || 'deduped', title, results };
+      }
+      if (dryRun) {
+        console.log('[dry-run] ntfy to RMOs:', title);
+        return { ok: true, skipped: 'dry_run', dryRun: true, title, results: [{ dryRun: true, title }] };
+      }
+    } else if (dryRun) {
+      console.log('[dry-run] ntfy to RMOs:', title);
+      return { ok: true, skipped: 'dry_run', dryRun: true, title, results: [{ dryRun: true, title }] };
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data: members } = await supabase
+      .from('user_licenses')
+      .select('user_id')
+      .eq('license_id', licenseId)
+      .in('role', ['RMO', 'ADMIN']);
+    const ids = Array.from(new Set((members || []).map((m) => m.user_id as string)));
+    let any = false;
+    for (const uid of ids) {
+      const { settings } = await loadAlertSettings(uid);
+      const r = await sendNtfy(settings, {
+        title: msg.title,
+        message: msg.message,
+        click: msg.click || `${appOrigin()}/dashboard`,
+        tags: msg.tags,
+        priority: msg.priority
+      });
+      results.push({ uid, push: r });
+      if (r.ok) any = true;
+    }
+
+    if (!opts.dedupeKey && !dryRun && ids.length) {
+      // Best-effort audit row when caller did not supply a dedupe key
+      const auditKey = `once:${kind}:${licenseId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      try {
+        await supabase.from('rmo_push_log').insert([
+          {
+            license_id: licenseId,
+            user_id: opts.userId || null,
+            kind,
+            dedupe_key: auditKey,
+            payload: { title: msg.title, priority: msg.priority || 'default' }
+          }
+        ]);
+      } catch {
+        /* ignore audit failures */
+      }
+    }
+
+    return any ? { ok: true, title, results } : { ok: false, skipped: 'no_ntfy', title, results };
+  } catch (err) {
+    console.error('notifyRmos failed', err);
+    return { ok: false, skipped: 'error', title, results };
+  }
+}
+
+/** Daily dedupe key helper (Pacific calendar day). */
+export function dailyDedupeKey(parts: Array<string | null | undefined>, dayYmd?: string): string {
+  const ymd = dayYmd || pacificYmd();
+  return [...parts.map((p) => String(p || '').trim()).filter(Boolean), ymd].join(':');
+}
+
 /** Never throws. Sends to every RMO/ADMIN member of the log's license per their settings. */
 export async function notifyRmosOfReport(logId: string): Promise<Array<Record<string, unknown>>> {
   const results: Array<Record<string, unknown>> = [];
@@ -214,13 +427,14 @@ export async function notifyRmosOfReport(logId: string): Promise<Array<Record<st
         results.push({ uid, skipped: 'disabled' });
         continue;
       }
+      const flaggedPush = content.flagged && settings.notify_flagged;
       const [push, email] = await Promise.all([
         sendNtfy(settings, {
           title: content.title,
           message: content.body,
           click: content.click,
-          tags: content.flagged && settings.notify_flagged ? 'warning,clipboard' : 'clipboard',
-          priority: content.flagged && settings.notify_flagged ? 'high' : 'default'
+          tags: flaggedPush ? 'warning,clipboard' : 'clipboard',
+          priority: flaggedPush ? 'high' : 'default'
         }),
         sendAlertEmail(settings.alert_emails || memberEmail, `[RMO] ${content.title}`, content.body)
       ]);
@@ -230,6 +444,22 @@ export async function notifyRmosOfReport(logId: string): Promise<Array<Record<st
     console.error('notifyRmosOfReport failed', err);
   }
   return results;
+}
+
+/** Module-scoped failed-login window (best-effort across warm instances). */
+const failedLoginAttempts = new Map<string, number[]>();
+
+export function recordFailedLoginAttempt(
+  email: string,
+  nowMs: number = Date.now(),
+  windowMs: number = 15 * 60 * 1000,
+  store: Map<string, number[]> = failedLoginAttempts
+): number {
+  return recordFailedLoginAttemptPure(email, nowMs, windowMs, store);
+}
+
+export function clearFailedLoginAttempts(store: Map<string, number[]> = failedLoginAttempts): void {
+  store.clear();
 }
 
 export { parseCsvEnv };
