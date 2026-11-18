@@ -260,5 +260,17 @@ export async function POST(req: Request) {
     maxAge: 60 * 60 * 24 * 14
   });
 
+  try {
+    const { notifyRmosOfNewUser } = await import('@/lib/rmoPushEvents');
+    await notifyRmosOfNewUser({
+      licenseId,
+      companyName: entityName,
+      userName: name,
+      userId: createdUser.id
+    });
+  } catch (pushErr) {
+    console.warn('signup RMO push skipped:', pushErr);
+  }
+
   return res;
 }

@@ -8,7 +8,7 @@ export const DEFAULT_REPORT_WEEKDAY = 4; // Thursday (JS getDay)
 export const DEFAULT_REPORT_CADENCE = 'biweekly' as const;
 
 export type ReportCadence = 'biweekly' | 'weekly' | 'monthly';
-export type ReminderStep = 'due_soon' | 'past_due' | 'overdue_3d' | 'overdue_7d';
+export type ReminderStep = 'due_soon' | 'due_today' | 'past_due' | 'overdue_3d' | 'overdue_7d';
 export type DueKind = 'cadence' | 'project_event';
 
 export type ReminderSettings = {
@@ -100,6 +100,8 @@ export function overdue7Ymd(dueDate: string): string {
 
 export function stepForToday(dueDate: string, todayYmd: string): ReminderStep | null {
   if (todayYmd === dueSoonYmd(dueDate)) return 'due_soon';
+  // Push-only to RMO — no CEO email on the due date itself.
+  if (todayYmd === dueDate) return 'due_today';
   if (todayYmd === pastDueYmd(dueDate)) return 'past_due';
   if (todayYmd === overdue3Ymd(dueDate)) return 'overdue_3d';
   if (todayYmd === overdue7Ymd(dueDate)) return 'overdue_7d';

@@ -5,7 +5,13 @@
 
 import { getSupabaseAdmin } from './supabase';
 import { filterOperatorReminderEmails } from './alertRecipients';
-import { appOrigin, loadAlertSettings, sendNtfy } from './rmoAlerts';
+import {
+  buildReminderEmailPush,
+  buildRemindersOffPush,
+  isReminderDeliveryFailure,
+  shouldNotifyRemindersOff
+} from './rmoAlertFormat';
+import { appOrigin, dailyDedupeKey, notifyRmos } from './rmoAlerts';
 import {
   addDaysYmd,
   buildDueSoonEmail,
@@ -229,7 +235,7 @@ export async function evaluateLicenseDues(input: {
   return { operators, dues, reportYmdsByUser, licenseReportYmds };
 }
 
-function isDueSatisfied(
+export function isDueSatisfied(
   due: DueItem,
   reportYmds: string[],
   cadenceDates: string[],
@@ -313,31 +319,68 @@ async function notifyRmosReminder(input: {
   message: string;
   click?: string;
   dryRun: boolean;
-}): Promise<{ ok: boolean; skipped?: string }> {
-  if (input.dryRun) {
-    console.log('[dry-run] ntfy to RMOs:', input.title);
-    return { ok: true, skipped: 'dry_run' };
-  }
-  const supabase = getSupabaseAdmin();
-  const { data: members } = await supabase
-    .from('user_licenses')
-    .select('user_id')
-    .eq('license_id', input.licenseId)
-    .in('role', ['RMO', 'ADMIN']);
-  const ids = Array.from(new Set((members || []).map((m) => m.user_id as string)));
-  let any = false;
-  for (const uid of ids) {
-    const { settings } = await loadAlertSettings(uid);
-    const r = await sendNtfy(settings, {
+  priority?: 'min' | 'low' | 'default' | 'high' | 'urgent';
+  tags?: string;
+  kind?: string;
+  dedupeKey?: string;
+  dedupeHours?: number;
+  userId?: string | null;
+}): Promise<{ ok: boolean; skipped?: string; title?: string }> {
+  const result = await notifyRmos(
+    input.licenseId,
+    {
       title: input.title,
       message: input.message,
       click: input.click || `${appOrigin()}/dashboard/supervision`,
-      tags: 'warning,clipboard',
-      priority: 'high'
-    });
-    if (r.ok) any = true;
-  }
-  return any ? { ok: true } : { ok: false, skipped: 'no_ntfy' };
+      tags: input.tags || 'warning,clipboard',
+      priority: input.priority || 'high'
+    },
+    {
+      dryRun: input.dryRun,
+      kind: input.kind || 'reminder',
+      dedupeKey: input.dedupeKey,
+      dedupeHours: input.dedupeHours,
+      userId: input.userId
+    }
+  );
+  return { ok: result.ok, skipped: result.skipped, title: result.title };
+}
+
+async function pushReminderEmailOutcome(input: {
+  licenseId: string;
+  operatorName: string;
+  operatorId: string;
+  dueDate: string;
+  companyName: string;
+  outcome: 'sent' | 'failed';
+  reason?: string;
+  dryRun: boolean;
+}): Promise<{ ok: boolean; skipped?: string; title: string }> {
+  const push = buildReminderEmailPush({
+    operatorName: input.operatorName,
+    dueDate: input.dueDate,
+    companyName: input.companyName,
+    outcome: input.outcome,
+    reason: input.reason
+  });
+  const result = await notifyRmosReminder({
+    licenseId: input.licenseId,
+    title: push.title,
+    message: push.message,
+    dryRun: input.dryRun,
+    priority: push.priority,
+    tags: push.tags,
+    kind: input.outcome === 'sent' ? 'reminder_email_sent' : 'reminder_email_failed',
+    dedupeKey: dailyDedupeKey([
+      input.outcome === 'sent' ? 'reminder_sent' : 'reminder_fail',
+      input.licenseId,
+      input.operatorId,
+      input.dueDate,
+      input.reason || input.outcome
+    ]),
+    userId: input.operatorId
+  });
+  return { ok: result.ok, skipped: result.skipped, title: push.title };
 }
 
 export async function processLicenseReminders(input: {
@@ -348,7 +391,6 @@ export async function processLicenseReminders(input: {
   todayYmd?: string;
   dryRun?: boolean;
 }): Promise<ReminderActionPreview[]> {
-  if (!input.settings.reminder_enabled) return [];
   const todayYmd = input.todayYmd || pacificYmd();
   const dryRun = Boolean(input.dryRun);
   const evaluated = await evaluateLicenseDues({
@@ -359,12 +401,58 @@ export async function processLicenseReminders(input: {
     todayYmd
   });
 
+  const actions: ReminderActionPreview[] = [];
+
+  // Reminders OFF with active CEOs → once-per-day RMO push (no CEO email).
+  if (shouldNotifyRemindersOff(input.settings.reminder_enabled, evaluated.operators.length)) {
+    const primary = evaluated.operators[0];
+    const push = buildRemindersOffPush({
+      companyName: input.entityName,
+      operatorName: primary.name
+    });
+    const dedupeKey = dailyDedupeKey(['reminders_off', input.licenseId], todayYmd);
+    const ntfy = await notifyRmosReminder({
+      licenseId: input.licenseId,
+      title: push.title,
+      message: push.message,
+      dryRun,
+      priority: push.priority,
+      tags: push.tags,
+      kind: 'reminders_off',
+      dedupeKey,
+      dedupeHours: 24,
+      userId: primary.id
+    });
+    actions.push({
+      license_id: input.licenseId,
+      license_number: input.licenseNumber,
+      user_id: primary.id,
+      user_email: primary.email,
+      user_name: primary.name,
+      due_date: todayYmd,
+      due_kind: 'cadence',
+      project_id: null,
+      step: 'due_soon',
+      channel: 'ntfy',
+      status:
+        ntfy.skipped === 'deduped'
+          ? 'already_sent'
+          : dryRun
+            ? 'would_send'
+            : ntfy.ok
+              ? 'sent'
+              : 'skipped',
+      detail: ntfy.skipped || push.title
+    });
+    return actions;
+  }
+
+  if (!input.settings.reminder_enabled) return actions;
+
   const cadenceDates = evaluated.dues
     .filter((d) => d.dueKind === 'cadence')
     .map((d) => d.dueDate)
     .sort();
-
-  const actions: ReminderActionPreview[] = [];
 
   for (const due of evaluated.dues) {
     const step = stepForToday(due.dueDate, todayYmd);
@@ -406,14 +494,23 @@ export async function processLicenseReminders(input: {
         continue;
       }
 
-      if (step === 'due_soon') {
-        const mail = buildDueSoonEmail({
-          operatorName: op.name,
-          companyName: input.entityName,
-          licenseNumber: input.licenseNumber,
-          dueDate: due.dueDate,
-          origin: appOrigin()
-        });
+      if (step === 'due_soon' || step === 'past_due') {
+        const mail =
+          step === 'due_soon'
+            ? buildDueSoonEmail({
+                operatorName: op.name,
+                companyName: input.entityName,
+                licenseNumber: input.licenseNumber,
+                dueDate: due.dueDate,
+                origin: appOrigin()
+              })
+            : buildPastDueEmail({
+                operatorName: op.name,
+                companyName: input.entityName,
+                licenseNumber: input.licenseNumber,
+                dueDate: due.dueDate,
+                origin: appOrigin()
+              });
         const sent = await sendReminderEmail(op.email, mail.subject, mail.text, dryRun);
         if (sent.ok) {
           await recordSent({
@@ -435,16 +532,64 @@ export async function processLicenseReminders(input: {
           status: dryRun ? 'would_send' : sent.ok ? 'sent' : 'skipped',
           detail: sent.skipped || mail.subject
         });
-      } else if (step === 'past_due') {
-        const mail = buildPastDueEmail({
-          operatorName: op.name,
-          companyName: input.entityName,
-          licenseNumber: input.licenseNumber,
-          dueDate: due.dueDate,
-          origin: appOrigin()
+
+        // RMO push: delivery confirmation or failure (never to the CEO).
+        if (sent.ok || dryRun) {
+          const rmoPush = await pushReminderEmailOutcome({
+            licenseId: input.licenseId,
+            operatorName: op.name,
+            operatorId: op.id,
+            dueDate: due.dueDate,
+            companyName: input.entityName,
+            outcome: 'sent',
+            dryRun
+          });
+          actions.push({
+            ...base,
+            step,
+            channel: 'ntfy',
+            status: dryRun ? 'would_send' : rmoPush.ok ? 'sent' : 'skipped',
+            detail: rmoPush.skipped || rmoPush.title
+          });
+        } else if (isReminderDeliveryFailure(sent.skipped)) {
+          const rmoPush = await pushReminderEmailOutcome({
+            licenseId: input.licenseId,
+            operatorName: op.name,
+            operatorId: op.id,
+            dueDate: due.dueDate,
+            companyName: input.entityName,
+            outcome: 'failed',
+            reason: sent.skipped,
+            dryRun
+          });
+          actions.push({
+            ...base,
+            step,
+            channel: 'ntfy',
+            status: dryRun ? 'would_send' : rmoPush.ok ? 'sent' : 'skipped',
+            detail: rmoPush.skipped || rmoPush.title
+          });
+        }
+      } else if (step === 'due_today') {
+        const title = `${op.name}'s report due today - ${input.entityName}`;
+        const message = [
+          `${op.name} (${op.email}) has a required report due today.`,
+          `Due: ${due.dueDate} (${due.dueKind}).`,
+          `Company: ${input.entityName}, CSLB #${input.licenseNumber}.`,
+          due.label,
+          'No email sent to the operator for due-today (push to RMO only).'
+        ].join('\n');
+        const ntfy = await notifyRmosReminder({
+          licenseId: input.licenseId,
+          title,
+          message,
+          dryRun,
+          priority: 'default',
+          tags: 'calendar',
+          kind: 'due_today',
+          userId: op.id
         });
-        const sent = await sendReminderEmail(op.email, mail.subject, mail.text, dryRun);
-        if (sent.ok) {
+        if (ntfy.ok || dryRun) {
           await recordSent({
             licenseId: input.licenseId,
             userId: op.id,
@@ -452,17 +597,17 @@ export async function processLicenseReminders(input: {
             dueKind: due.dueKind,
             projectId: due.projectId,
             step,
-            channel: 'email',
-            payload: { subject: mail.subject, dryRun },
+            channel: 'ntfy',
+            payload: { title, dryRun },
             dryRun
           });
         }
         actions.push({
           ...base,
           step,
-          channel: 'email',
-          status: dryRun ? 'would_send' : sent.ok ? 'sent' : 'skipped',
-          detail: sent.skipped || mail.subject
+          channel: 'ntfy',
+          status: dryRun ? 'would_send' : ntfy.ok ? 'sent' : 'skipped',
+          detail: ntfy.skipped || title
         });
       } else if (step === 'overdue_3d') {
         const title = `Operator report 3+ days overdue — ${input.entityName}`;
@@ -477,7 +622,11 @@ export async function processLicenseReminders(input: {
           licenseId: input.licenseId,
           title,
           message,
-          dryRun
+          dryRun,
+          priority: 'high',
+          tags: 'warning,clipboard',
+          kind: 'overdue_3d',
+          userId: op.id
         });
         if (ntfy.ok || dryRun) {
           await recordSent({
@@ -521,7 +670,11 @@ export async function processLicenseReminders(input: {
           licenseId: input.licenseId,
           title,
           message,
-          dryRun
+          dryRun,
+          priority: 'high',
+          tags: 'warning,clipboard',
+          kind: 'overdue_7d',
+          userId: op.id
         });
         if (ntfy.ok || dryRun) {
           await recordSent({

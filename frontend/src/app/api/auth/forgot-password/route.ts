@@ -73,6 +73,14 @@ export async function POST(req: Request) {
       // Log but still return generic OK — avoid leaking Auth state
       console.warn('resetPasswordForEmail:', error.message);
     }
+
+    // RMO-only: notify when a CEO requests a reset (never emails the CEO beyond Auth).
+    try {
+      const { notifyRmosOfCeoPasswordReset } = await import('@/lib/rmoPushEvents');
+      await notifyRmosOfCeoPasswordReset(email);
+    } catch (pushErr) {
+      console.warn('password-reset RMO push skipped:', pushErr);
+    }
   } catch (err) {
     console.error(
       'forgot-password failed:',

@@ -42,10 +42,10 @@ describe('report reminder cadence', () => {
 
   it('maps calendar days to reminder steps', () => {
     assert.equal(stepForToday('2026-10-22', '2026-10-19'), 'due_soon');
+    assert.equal(stepForToday('2026-10-22', '2026-10-22'), 'due_today');
     assert.equal(stepForToday('2026-10-22', '2026-10-23'), 'past_due');
     assert.equal(stepForToday('2026-10-22', '2026-10-25'), 'overdue_3d');
     assert.equal(stepForToday('2026-10-22', '2026-10-29'), 'overdue_7d');
-    assert.equal(stepForToday('2026-10-22', '2026-10-22'), null);
   });
 
   it('treats a report in the window as satisfying the due date', () => {
