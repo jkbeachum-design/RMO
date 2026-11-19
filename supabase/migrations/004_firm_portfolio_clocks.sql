@@ -39,6 +39,11 @@ CREATE INDEX IF NOT EXISTS qfa_license_id_idx ON public.qualifier_firm_associati
 CREATE INDEX IF NOT EXISTS qfa_user_associated_idx
   ON public.qualifier_firm_associations (user_id, associated_at);
 
+-- Data API grants (required for PostgREST after Oct 30, 2026; RLS still enforces access)
+grant select on public.qualifier_firm_associations to anon;
+grant select, insert, update, delete on public.qualifier_firm_associations to authenticated;
+grant select, insert, update, delete on public.qualifier_firm_associations to service_role;
+
 CREATE TABLE IF NOT EXISTS public.firm_disassociation_clocks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   association_id uuid NOT NULL REFERENCES public.qualifier_firm_associations(id) ON DELETE CASCADE,
@@ -57,6 +62,11 @@ CREATE TABLE IF NOT EXISTS public.firm_disassociation_clocks (
 CREATE INDEX IF NOT EXISTS fdc_user_id_idx ON public.firm_disassociation_clocks (user_id);
 CREATE INDEX IF NOT EXISTS fdc_deadlines_idx
   ON public.firm_disassociation_clocks (notify_deadline, replace_deadline);
+
+-- Data API grants (required for PostgREST after Oct 30, 2026; RLS still enforces access)
+grant select on public.firm_disassociation_clocks to anon;
+grant select, insert, update, delete on public.firm_disassociation_clocks to authenticated;
+grant select, insert, update, delete on public.firm_disassociation_clocks to service_role;
 
 INSERT INTO public.qualifier_firm_associations (
   user_id, license_id, eligibility_basis, associated_at, status

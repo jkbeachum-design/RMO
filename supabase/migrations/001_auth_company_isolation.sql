@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS public.user_licenses (
 CREATE INDEX IF NOT EXISTS user_licenses_user_id_idx ON public.user_licenses (user_id);
 CREATE INDEX IF NOT EXISTS user_licenses_license_id_idx ON public.user_licenses (license_id);
 
+-- Data API grants (required for PostgREST after Oct 30, 2026; RLS still enforces access)
+grant select on public.user_licenses to anon;
+grant select, insert, update, delete on public.user_licenses to authenticated;
+grant select, insert, update, delete on public.user_licenses to service_role;
+
 COMMENT ON TABLE public.user_licenses IS
   'Authoritative company/license membership. Dashboard and APIs must scope all reads/writes to these rows.';
 

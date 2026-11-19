@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS public.supervision_activities (
 CREATE INDEX IF NOT EXISTS supervision_activities_license_id_idx
   ON public.supervision_activities (license_id, occurred_at DESC);
 
+-- Data API grants (required for PostgREST after Oct 30, 2026; RLS still enforces access)
+grant select on public.supervision_activities to anon;
+grant select, insert, update, delete on public.supervision_activities to authenticated;
+grant select, insert, update, delete on public.supervision_activities to service_role;
+
 ALTER TABLE public.supervision_activities ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS rmo_supervision_select ON public.supervision_activities;
